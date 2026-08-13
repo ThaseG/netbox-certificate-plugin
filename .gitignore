@@ -1,3 +1,21 @@
 old/*
 .DS_Store
 CLAUDE.md
+data-model.txt
+
+# Runtime secrets / generated environment files — never commit real values
+ci/docker/.env
+.env
+*.env.local
+env.txt
+
+# Local acme.sh state, if ever run from within the repo checkout (normally
+# lives at $HOME/.acme.sh, outside any repo — see ci/scripts/issue-cert.sh)
+.acme.sh/
+
+# Python build artifacts (netbox_pki plugin package)
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.ruff_cache/

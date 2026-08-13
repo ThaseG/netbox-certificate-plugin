@@ -1,0 +1,202 @@
+{
+  "tenancy/contact-groups/": [
+    { "name": "Firewall Team", "slug": "firewall-team" },
+    { "name": "Security Team", "slug": "security-team" },
+    { "name": "Network Operations", "slug": "network-operations" },
+    { "name": "PKI Administrators", "slug": "pki-administrators" }
+  ],
+  "tenancy/contacts/": [
+    {
+      "name": "Dana Whitfield",
+      "email": "dana.whitfield@example.com",
+      "phone": "+1-555-0101",
+      "groups": ["firewall-team"]
+    },
+    {
+      "name": "Marcus Ito",
+      "email": "marcus.ito@example.com",
+      "phone": "+1-555-0102",
+      "groups": ["security-team"]
+    },
+    {
+      "name": "Priya Shah",
+      "email": "priya.shah@example.com",
+      "phone": "+1-555-0103",
+      "groups": ["network-operations"]
+    },
+    {
+      "name": "Elena Petrova",
+      "email": "elena.petrova@example.com",
+      "phone": "+1-555-0104",
+      "groups": ["pki-administrators"]
+    },
+    {
+      "name": "Sam O'Connor",
+      "email": "sam.oconnor@example.com",
+      "phone": "+1-555-0105",
+      "groups": ["security-team", "pki-administrators"]
+    }
+  ],
+  "plugins/pki/protocols/": [
+    {
+      "name": "Let's Encrypt ACME",
+      "type": "acme",
+      "acme_directory_url": "https://acme-v02.api.letsencrypt.org/directory",
+      "acme_challenge_type": "dns-01",
+      "acme_account_key_ref": "vault://pki/acme/letsencrypt-account-key",
+      "acme_dns_provider": "cloudflare",
+      "acme_dns_credential_ref": "vault://pki/acme/cloudflare-token",
+      "environment": "production",
+      "description": "Public ACME issuance via Let's Encrypt for externally-facing services."
+    },
+    {
+      "name": "Internal SCEP CA",
+      "type": "scep",
+      "scep_url": "https://scep.internal.example.com/scep",
+      "scep_ca_fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77",
+      "scep_challenge_secret_ref": "vault://pki/scep/internal-challenge",
+      "scep_encryption_algorithm": "aes256",
+      "scep_digest_algorithm": "sha256",
+      "scep_renewal_mode": "renewal",
+      "environment": "production",
+      "description": "Internal SCEP enrollment for network and security devices."
+    },
+    {
+      "name": "Lab ACME (Staging)",
+      "type": "acme",
+      "acme_directory_url": "https://acme-staging-v02.api.letsencrypt.org/directory",
+      "acme_challenge_type": "http-01",
+      "acme_account_key_ref": "vault://pki/acme/staging-account-key",
+      "environment": "lab",
+      "description": "Staging ACME directory used for pre-production testing."
+    }
+  ],
+  "plugins/pki/requestors/": [
+    {
+      "name": "Firewall Team",
+      "contact": ["Dana Whitfield"],
+      "contact_group": ["firewall-team"],
+      "description": "Requests and manages certificates for perimeter firewalls and VPN gateways."
+    },
+    {
+      "name": "Security Team",
+      "contact": ["Marcus Ito", "Sam O'Connor"],
+      "contact_group": ["security-team"],
+      "description": "Requests certificates for internal security tooling and the PKI root/intermediate CAs."
+    },
+    {
+      "name": "Network Operations",
+      "contact": ["Priya Shah"],
+      "contact_group": ["network-operations"],
+      "description": "Requests certificates for switches, routers and other network infrastructure."
+    }
+  ],
+  "plugins/pki/cas/": [
+    {
+      "name": "Example Corp Root CA",
+      "status": "manual",
+      "protocol": "Internal SCEP CA",
+      "expiration": "20_years",
+      "cn": "Example Corp Root CA",
+      "certificate": "-----BEGIN CERTIFICATE-----\nDEMOROOTCADEMOROOTCADEMOROOTCADEMOROOTCADEMOROOTCA==\n-----END CERTIFICATE-----",
+      "requestor": "Security Team",
+      "description": "Offline root CA. Not used to issue certificates directly."
+    },
+    {
+      "name": "Example Corp Issuing CA 1",
+      "status": "automatic-created",
+      "protocol": "Internal SCEP CA",
+      "parent_ca": "Example Corp Root CA",
+      "expiration": "5_years",
+      "default_cert_expiration": "1_year",
+      "cn": "Example Corp Issuing CA 1",
+      "csr": "-----BEGIN CERTIFICATE REQUEST-----\nDEMOCSRDEMOCSRDEMOCSRDEMOCSRDEMOCSRDEMOCSR==\n-----END CERTIFICATE REQUEST-----",
+      "certificate": "-----BEGIN CERTIFICATE-----\nDEMOISSUINGCA1DEMOISSUINGCA1DEMOISSUINGCA1==\n-----END CERTIFICATE-----",
+      "requestor": "Security Team",
+      "description": "Online intermediate CA used for internal SCEP enrollment."
+    },
+    {
+      "name": "Example Corp Public Issuing CA",
+      "status": "automatic-requested",
+      "protocol": "Let's Encrypt ACME",
+      "expiration": "3_months",
+      "default_cert_expiration": "45_days",
+      "cn": "Public ACME Proxy CA",
+      "description": "Represents public ACME issuance via Let's Encrypt for externally-facing services."
+    },
+    {
+      "name": "Lab Test CA",
+      "status": "manual",
+      "protocol": "Lab ACME (Staging)",
+      "expiration": "1_month",
+      "cn": "Lab Test CA",
+      "requestor": "Network Operations",
+      "description": "Non-production CA used for lab and staging environment testing."
+    }
+  ],
+  "plugins/pki/certificates/": [
+    {
+      "cn": "vpn.example.com",
+      "ca": "Example Corp Issuing CA 1",
+      "status": "automatic-created",
+      "expiration": "automatic",
+      "certificate": "-----BEGIN CERTIFICATE-----\nDEMOVPNEXAMPLECOMDEMOVPNEXAMPLECOMDEMOVPN==\n-----END CERTIFICATE-----",
+      "private_key": "vault://pki/certs/vpn.example.com",
+      "requestor": "Firewall Team",
+      "alt": "vpn.example.com, vpn2.example.com",
+      "description": "Primary site-to-site VPN gateway certificate."
+    },
+    {
+      "cn": "fw-edge-01.example.com",
+      "ca": "Example Corp Issuing CA 1",
+      "status": "manual",
+      "expiration": "1_year",
+      "certificate": "-----BEGIN CERTIFICATE-----\nDEMOFWEDGE01DEMOFWEDGE01DEMOFWEDGE01DEMO==\n-----END CERTIFICATE-----",
+      "private_key": "vault://pki/certs/fw-edge-01.example.com",
+      "requestor": "Firewall Team",
+      "description": "Edge firewall management interface certificate."
+    },
+    {
+      "cn": "core-sw-01.internal.example.com",
+      "ca": "Example Corp Issuing CA 1",
+      "status": "automatic-csr",
+      "expiration": "2_years",
+      "certificate": "-----BEGIN CERTIFICATE-----\nDEMOCORESW01DEMOCORESW01DEMOCORESW01DEMO==\n-----END CERTIFICATE-----",
+      "private_key": "vault://pki/certs/core-sw-01.internal.example.com",
+      "csr": "-----BEGIN CERTIFICATE REQUEST-----\nDEMOCORESW01CSRDEMOCORESW01CSRDEMO==\n-----END CERTIFICATE REQUEST-----",
+      "requestor": "Network Operations",
+      "description": "Core switch management interface certificate."
+    },
+    {
+      "cn": "www.example.com",
+      "ca": "Example Corp Public Issuing CA",
+      "status": "automatic-requested",
+      "expiration": "automatic",
+      "certificate": "-----BEGIN CERTIFICATE-----\nDEMOWWWEXAMPLECOMDEMOWWWEXAMPLECOMDEMOWWW==\n-----END CERTIFICATE-----",
+      "private_key": "vault://pki/certs/www.example.com",
+      "requestor": "Security Team",
+      "alt": "www.example.com, example.com",
+      "description": "Public-facing website certificate, renewed automatically via ACME."
+    },
+    {
+      "cn": "api.example.com",
+      "ca": "Example Corp Public Issuing CA",
+      "status": "automatic-requested",
+      "expiration": "45_days",
+      "certificate": "-----BEGIN CERTIFICATE-----\nDEMOAPIEXAMPLECOMDEMOAPIEXAMPLECOMDEMOAPI==\n-----END CERTIFICATE-----",
+      "private_key": "vault://pki/certs/api.example.com",
+      "requestor": "Security Team",
+      "description": "Public API gateway certificate."
+    },
+    {
+      "cn": "lab-app.test.example.com",
+      "ca": "Lab Test CA",
+      "status": "manual",
+      "expiration": "1_month",
+      "certificate": "-----BEGIN CERTIFICATE-----\nDEMOLABAPPDEMOLABAPPDEMOLABAPPDEMOLABAPP==\n-----END CERTIFICATE-----",
+      "private_key": "vault://pki/certs/lab-app.test.example.com",
+      "requestor": "Network Operations",
+      "description": "Lab application testing certificate."
+    }
+  ]
+}

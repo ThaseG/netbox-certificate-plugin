@@ -1,0 +1,93 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load django_tables2 %}
+
+{% block content %}
+  <div class="row mb-3">
+    <div class="col col-md-6">
+      <div class="card">
+        <h5 class="card-header">Protocol</h5>
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Name</th>
+            <td>{{ object.name }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Type</th>
+            <td>{% badge object.get_type_display bg_color=object.get_type_color %}</td>
+          </tr>
+          <tr>
+            <th scope="row">Environment</th>
+            <td>
+              {% if object.environment %}
+                {% badge object.get_environment_display bg_color=object.get_environment_color %}
+              {% else %}
+                {{ ''|placeholder }}
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Description</th>
+            <td>{{ object.description|placeholder }}</td>
+          </tr>
+        </table>
+      </div>
+      <div class="card">
+        <h5 class="card-header">Transport Options</h5>
+        <table class="table table-hover attr-table">
+          <tr><th scope="row">TLS Trust Anchor</th><td>{{ object.tls_trust_anchor|placeholder }}</td></tr>
+          <tr><th scope="row">Verify Server TLS Certificate</th><td>{% checkmark object.tls_verify %}</td></tr>
+          <tr><th scope="row">HTTP Proxy</th><td>{{ object.http_proxy|placeholder }}</td></tr>
+          <tr><th scope="row">Request Timeout</th><td>{{ object.timeout_seconds }}s</td></tr>
+          <tr><th scope="row">Retry Attempts</th><td>{{ object.retry_count }}</td></tr>
+        </table>
+      </div>
+      {% include 'inc/panels/custom_fields.html' %}
+      {% include 'inc/panels/tags.html' %}
+    </div>
+    <div class="col col-md-6">
+      {% if object.type == 'acme' %}
+        <div class="card">
+          <h5 class="card-header">ACME</h5>
+          <table class="table table-hover attr-table">
+            <tr><th scope="row">Directory URL</th><td>{{ object.acme_directory_url|placeholder }}</td></tr>
+            <tr><th scope="row">Challenge Type</th><td>{{ object.get_acme_challenge_type_display|placeholder }}</td></tr>
+            <tr><th scope="row">Account Key Reference</th><td>{{ object.acme_account_key_ref|placeholder }}</td></tr>
+            <tr><th scope="row">DNS Provider Plugin</th><td>{{ object.acme_dns_provider|placeholder }}</td></tr>
+            <tr><th scope="row">DNS Credential Reference</th><td>{{ object.acme_dns_credential_ref|placeholder }}</td></tr>
+            <tr><th scope="row">External Account Binding Required</th><td>{% checkmark object.acme_eab_required %}</td></tr>
+            <tr><th scope="row">EAB Key Identifier</th><td>{{ object.acme_eab_kid|placeholder }}</td></tr>
+            <tr><th scope="row">EAB HMAC Key Reference</th><td>{{ object.acme_eab_hmac_ref|placeholder }}</td></tr>
+            <tr><th scope="row">Account URL (kid)</th><td>{{ object.acme_account_url|placeholder }}</td></tr>
+            <tr><th scope="row">Contact E-mail</th><td>{{ object.acme_contact_email|placeholder }}</td></tr>
+            <tr><th scope="row">Terms of Service Accepted</th><td>{% checkmark object.acme_tos_agreed %}</td></tr>
+            <tr><th scope="row">Terms Accepted At</th><td>{{ object.acme_tos_agreed_at|placeholder }}</td></tr>
+            <tr><th scope="row">Preferred Issuer Chain</th><td>{{ object.acme_preferred_chain|placeholder }}</td></tr>
+            <tr><th scope="row">Certificate Profile</th><td>{{ object.acme_profile|placeholder }}</td></tr>
+          </table>
+        </div>
+      {% elif object.type == 'scep' %}
+        <div class="card">
+          <h5 class="card-header">SCEP</h5>
+          <table class="table table-hover attr-table">
+            <tr><th scope="row">SCEP Endpoint URL</th><td>{{ object.scep_url|placeholder }}</td></tr>
+            <tr><th scope="row">CA Fingerprint (SHA-256)</th><td>{{ object.scep_ca_fingerprint|placeholder }}</td></tr>
+            <tr><th scope="row">Challenge Password Reference</th><td>{{ object.scep_challenge_secret_ref|placeholder }}</td></tr>
+            <tr><th scope="row">Encryption Algorithm</th><td>{{ object.get_scep_encryption_algorithm_display|placeholder }}</td></tr>
+            <tr><th scope="row">Digest Algorithm</th><td>{{ object.get_scep_digest_algorithm_display|placeholder }}</td></tr>
+            <tr><th scope="row">Renewal Mode</th><td>{{ object.get_scep_renewal_mode_display|placeholder }}</td></tr>
+            <tr><th scope="row">CA Identifier</th><td>{{ object.scep_ca_identifier|placeholder }}</td></tr>
+            <tr><th scope="row">Poll Interval (s)</th><td>{{ object.scep_poll_interval|placeholder }}</td></tr>
+            <tr><th scope="row">Max Poll Attempts</th><td>{{ object.scep_max_poll_attempts|placeholder }}</td></tr>
+            <tr><th scope="row">RA Certificate Reference</th><td>{{ object.scep_ra_cert_ref|placeholder }}</td></tr>
+          </table>
+        </div>
+      {% endif %}
+      <div class="card">
+        <h5 class="card-header">Certificate Authorities using this Protocol</h5>
+        {% render_table cas_table %}
+      </div>
+    </div>
+  </div>
+  {% include 'inc/panels/comments.html' %}
+{% endblock content %}

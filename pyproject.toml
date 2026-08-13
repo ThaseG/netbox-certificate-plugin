@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "netbox-certificate-plugin"
+# Kept in sync with NETBOX_PKI_PLUGIN_VERSION in versions.sh — the
+# Code-Review stage of ci-cd.yml fails the build if these two drift apart.
+version = "0.1.0"
+description = "Manage Certificate Authorities, Certificates, Requestors and enrollment Protocols directly in NetBox."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "ThaseG" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Django",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/ThaseG/netbox-certificate-plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["netbox_pki"]
+
+[tool.ruff]
+# Baseline copied from netbox-community/netbox's own pyproject.toml so
+# plugin code style matches upstream conventions. target-version set to
+# py310 (not netbox core's py312) to match this plugin's own
+# requires-python above — ruff shouldn't suggest syntax our stated minimum
+# doesn't support.
+line-length = 120
+indent-width = 4
+respect-gitignore = true
+target-version = "py310"
+# Migrations are generated/frozen field snapshots, not hand-authored code —
+# line-length and import-sort rules on them just produce noise (a single
+# CreateModel operation with many fields is one long, deliberately literal
+# line) with nothing meaningful to fix.
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+extend-select = [
+    "E1",   # pycodestyle errors: indentation-related
+    "E2",   # pycodestyle errors: whitespace-related
+    "E3",   # pycodestyle errors: blank lines / spacing around definitions
+    "E501", # pycodestyle: line too long (enforced via line-length above)
+    "W",    # pycodestyle warnings
+    "I",    # import sorting (isort-equivalent)
+]
+# E1/E2/E3 need preview mode to take effect at all (matches upstream NetBox's
+# own pyproject.toml, which sets this for the same reason).
+preview = true
+
+[tool.ruff.format]
+# Ruff's formatter defaults to double quotes; both this codebase and NetBox
+# core itself consistently use single quotes, so override to match rather
+# than have `ruff format` fight every file that was already written this way.
+quote-style = "single"
+indent-style = "space"
+line-ending = "lf"

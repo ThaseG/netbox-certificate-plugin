@@ -1,0 +1,39 @@
+name: Renew TLS Certificate
+
+on:
+  schedule:
+    # Runs daily; acme.sh only performs an actual renewal once the
+    # certificate is ~60 days old (its default renewal window, checked
+    # inside ci/scripts/issue-cert.sh). On every other day this is a fast
+    # no-op ("Skip, Next renewal time is ..."), so daily just means the
+    # real renewal happens within 24h of becoming due, well inside the
+    # 30-day margin before the 90-day certificate actually expires.
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  # Scoped to this repo's own pipeline — see ci-cd.yml's concurrency
+  # comment for why a sibling plugin repo's own deploy/renewal doesn't need
+  # to queue behind this one.
+  group: netbox-pki-deploy
+  cancel-in-progress: false
+
+jobs:
+  renew:
+    runs-on: [self-hosted, netbox]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Issue or renew TLS certificate
+        # Writes directly into the shared front door's cert directory and
+        # reloads that container on change — no local docker compose
+        # involved, since this repo's own stack has no nginx of its own.
+        # See ci/shared-proxy/README.md.
+        run: ci/scripts/issue-cert.sh
+        env:
+          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
+          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+          WS_ApiKey: ${{ secrets.WS_API_KEY }}
+          WS_ApiSecret: ${{ secrets.WS_API_SECRET }}

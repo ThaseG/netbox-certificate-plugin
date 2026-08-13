@@ -1,0 +1,31 @@
+# Reference compose file for the shared front-door reverse proxy that fronts
+# every NetBox plugin demo deployment on this runner (this repo's, and any
+# sibling plugin repo's) on host ports 80/443, routing to each by
+# server_name/SNI. This is shared, persistent infrastructure: it is set up
+# ONCE, by hand, directly on the runner (see README.md in this directory)
+# and is never started, stopped or rebuilt by any single plugin repo's own
+# CI/CD pipeline — each repo's pipeline only ever writes its own server-block
+# file into $EDGE_CONF_DIR and asks this container to reload.
+#
+# This file is committed here for reference/reproducibility, but the actual
+# running instance does not need to live in — or be started from — a git
+# checkout of this specific repo; it just needs to be reachable via the
+# `netbox-edge-proxy` container name and the `netbox-edge` Docker network.
+services:
+  nginx:
+    image: docker.io/nginx:1.27-alpine
+    container_name: netbox-edge-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${EDGE_CONF_DIR:-/opt/netbox-edge-proxy/conf.d}:/etc/nginx/conf.d:ro
+      - ${EDGE_CERTS_DIR:-/opt/netbox-edge-proxy/certs}:/etc/nginx/certs:ro
+    networks:
+      - edge
+
+networks:
+  edge:
+    name: netbox-edge
+    external: true

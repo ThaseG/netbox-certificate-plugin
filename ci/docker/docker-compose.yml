@@ -1,0 +1,183 @@
+services:
+  postgres:
+    image: docker.io/postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: netbox
+      POSTGRES_USER: netbox
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    healthcheck:
+      test: pg_isready -q -t 2 -d netbox -U netbox
+      start_period: 20s
+      timeout: 30s
+      interval: 10s
+      retries: 5
+    volumes:
+      - netbox-postgres:/var/lib/postgresql
+    networks:
+      - netbox
+
+  redis:
+    image: docker.io/valkey/valkey:9.0-alpine
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - valkey-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    healthcheck:
+      test: '[ "$$(valkey-cli --pass "$${REDIS_PASSWORD}" ping)" = "PONG" ]'
+      start_period: 5s
+      timeout: 3s
+      interval: 5s
+      retries: 5
+    volumes:
+      - netbox-redis-data:/data
+    networks:
+      - netbox
+
+  redis-cache:
+    image: docker.io/valkey/valkey:9.0-alpine
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - valkey-server --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_CACHE_PASSWORD:?REDIS_CACHE_PASSWORD must be set}
+    healthcheck:
+      test: '[ "$$(valkey-cli --pass "$${REDIS_PASSWORD}" ping)" = "PONG" ]'
+      start_period: 5s
+      timeout: 3s
+      interval: 5s
+      retries: 5
+    volumes:
+      - netbox-redis-cache-data:/data
+    networks:
+      - netbox
+
+  netbox: &netbox
+    build:
+      # Widened to the repo root (this file lives at ci/docker/) so the
+      # build can COPY in the first-party netbox_pki plugin package.
+      context: ../..
+      dockerfile: ci/docker/Dockerfile-Plugins
+      args:
+        NETBOX_VERSION: ${NETBOX_VERSION:?NETBOX_VERSION must be set (source versions.sh)}
+    image: netbox-certificate-plugin/netbox:${NETBOX_VERSION:?NETBOX_VERSION must be set (source versions.sh)}
+    pull_policy: build
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+    environment:
+      SECRET_KEY: ${NETBOX_SECRET_KEY:?NETBOX_SECRET_KEY must be set}
+      # Required for Token.objects.create() to work at all (v2 API tokens
+      # are hashed with this as a pepper) — without it, NetBox raises
+      # ValueError("API_TOKEN_PEPPERS is not defined") the moment any code
+      # (including our own test suite) tries to create a token, not just a
+      # cosmetic startup warning as the log message might suggest.
+      API_TOKEN_PEPPER_1: ${API_TOKEN_PEPPER_1:?API_TOKEN_PEPPER_1 must be set}
+      ALLOWED_HOSTS: ${NETBOX_DOMAIN:?NETBOX_DOMAIN must be set} localhost
+      CSRF_TRUSTED_ORIGINS: https://${NETBOX_DOMAIN:?NETBOX_DOMAIN must be set}
+      DB_HOST: postgres
+      DB_NAME: netbox
+      DB_USER: netbox
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      REDIS_DATABASE: 0
+      REDIS_CACHE_HOST: redis-cache
+      REDIS_CACHE_PASSWORD: ${REDIS_CACHE_PASSWORD:?REDIS_CACHE_PASSWORD must be set}
+      REDIS_CACHE_DATABASE: 1
+      SKIP_SUPERUSER: "false"
+      SUPERUSER_NAME: admin
+      SUPERUSER_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set}
+      SUPERUSER_PASSWORD: ${NETBOX_SUPERUSER_PASSWORD:?NETBOX_SUPERUSER_PASSWORD must be set}
+      SUPERUSER_API_TOKEN: ${NETBOX_SUPERUSER_API_TOKEN:?NETBOX_SUPERUSER_API_TOKEN must be set}
+      # netbox-docker's super_user.py only creates a token for the
+      # bootstrap superuser when *both* SUPERUSER_API_TOKEN and
+      # SUPERUSER_API_KEY are set (v2 tokens need a separate lookup "key"
+      # alongside the secret) — without this, no token is ever created at
+      # all, silently, and every API call authenticates as nobody.
+      SUPERUSER_API_KEY: ${NETBOX_SUPERUSER_API_KEY:?NETBOX_SUPERUSER_API_KEY must be set}
+      CORS_ORIGIN_ALLOW_ALL: "false"
+      GRAPHQL_ENABLED: "false"
+      WEBHOOKS_ENABLED: "true"
+    healthcheck:
+      # start_period is generous because pre-cleanup.sh wipes this stack's
+      # named volumes before every deploy (see that script's own header
+      # comment), so every boot runs against a completely empty database —
+      # NetBox's full initial migration (hundreds of migrations) plus this
+      # plugin's own, which can take several minutes. There's no "warm"
+      # boot case here to be faster than that. Failures during start_period
+      # don't count against the unhealthy threshold.
+      test: curl -f http://localhost:8080/login/ || exit 1
+      start_period: 600s
+      timeout: 5s
+      interval: 15s
+      retries: 5
+    volumes:
+      - netbox-media-files:/opt/netbox/netbox/media:rw
+      - netbox-reports-files:/opt/netbox/netbox/reports:rw
+      - netbox-scripts-files:/opt/netbox/netbox/scripts:rw
+    networks:
+      netbox:
+      # Joins the shared, persistent front-door reverse proxy's network
+      # under a stable alias so it can be reached as
+      # http://netbox-certificate-plugin:8080 regardless of which compose
+      # project (this repo, or a sibling plugin repo sharing the same
+      # runner) created this container. The "edge" network itself is NOT
+      # created or torn down by this repo's pipeline — see
+      # ci/shared-proxy/README.md for the one-time setup. `external: true`
+      # below means `docker compose up` will fail loudly if that setup
+      # hasn't been done yet, rather than silently creating a private
+      # same-named network no other stack can actually see.
+      edge:
+        aliases:
+          - netbox-certificate-plugin
+
+  netbox-worker:
+    <<: *netbox
+    depends_on:
+      netbox:
+        condition: service_healthy
+    networks:
+      # No "edge" here: only the web process needs to be reachable by the
+      # shared front door; the worker doesn't serve HTTP.
+      - netbox
+    command:
+      - /opt/netbox/venv/bin/python
+      - /opt/netbox/netbox/manage.py
+      - rqworker
+    healthcheck:
+      test: ps -aux | grep -v grep | grep -q rqworker || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 15s
+
+networks:
+  netbox:
+    driver: bridge
+  edge:
+    name: netbox-edge
+    external: true
+
+volumes:
+  netbox-postgres:
+    driver: local
+  netbox-redis-data:
+    driver: local
+  netbox-redis-cache-data:
+    driver: local
+  netbox-media-files:
+    driver: local
+  netbox-reports-files:
+    driver: local
+  netbox-scripts-files:
+    driver: local

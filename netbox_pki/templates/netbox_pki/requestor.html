@@ -1,0 +1,56 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load django_tables2 %}
+
+{% block content %}
+  <div class="row mb-3">
+    <div class="col col-md-6">
+      <div class="card">
+        <h5 class="card-header">Requestor</h5>
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Name</th>
+            <td>{{ object.name }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Contact Users</th>
+            <td>
+              {% for contact in object.contact.all %}
+                <a href="{{ contact.get_absolute_url }}">{{ contact }}</a>{% if not forloop.last %}, {% endif %}
+              {% empty %}
+                {{ ''|placeholder }}
+              {% endfor %}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Contact Groups</th>
+            <td>
+              {% for group in object.contact_group.all %}
+                <a href="{{ group.get_absolute_url }}">{{ group }}</a>{% if not forloop.last %}, {% endif %}
+              {% empty %}
+                {{ ''|placeholder }}
+              {% endfor %}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Description</th>
+            <td>{{ object.description|placeholder }}</td>
+          </tr>
+        </table>
+      </div>
+      {% include 'inc/panels/custom_fields.html' %}
+      {% include 'inc/panels/tags.html' %}
+    </div>
+    <div class="col col-md-6">
+      <div class="card">
+        <h5 class="card-header">Certificate Authorities</h5>
+        {% render_table cas_table %}
+      </div>
+      <div class="card">
+        <h5 class="card-header">Certificates</h5>
+        {% render_table certificates_table %}
+      </div>
+    </div>
+  </div>
+  {% include 'inc/panels/comments.html' %}
+{% endblock content %}

@@ -1,0 +1,23 @@
+# Builds the base NetBox image with this repo's own first-party "netbox_pki"
+# plugin baked in. No third-party plugins — this deployment exists solely to
+# build/test/showcase netbox_pki itself.
+#
+# Build context is the repo root (see docker-compose.yml's build.context),
+# so paths below are relative to the repo root, not this file's directory.
+ARG NETBOX_VERSION
+FROM netboxcommunity/netbox:${NETBOX_VERSION}
+
+# Installed as a regular (non-editable) package — the image is rebuilt from
+# source on every deploy, so there's no need for an editable install.
+COPY pyproject.toml /opt/netbox-plugin-src/pyproject.toml
+COPY netbox_pki /opt/netbox-plugin-src/netbox_pki
+RUN /usr/local/bin/uv pip install /opt/netbox-plugin-src
+
+COPY ci/docker/configuration/plugins.py /etc/netbox/config/plugins.py
+
+# Bake static files into the image at build time rather than regenerating
+# them on every container start. Dummy DEBUG/SECRET_KEY: collectstatic
+# doesn't touch the database or need real secrets, it only needs Django to
+# boot far enough to run.
+RUN DEBUG="true" SECRET_KEY="dummydummydummydummydummydummydummydummydummydummy" \
+    /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py collectstatic --no-input

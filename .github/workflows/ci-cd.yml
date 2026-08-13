@@ -1,0 +1,393 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ci/**"
+      - "versions.sh"
+      - "netbox_pki/**"
+      - "pyproject.toml"
+      - ".github/workflows/ci-cd.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  # Scoped to this repo's own pipeline only — a sibling plugin repo sharing
+  # the same runner (e.g. netbox-service-offerings-plugin) uses its own
+  # group name, so the two can deploy concurrently: each only touches its
+  # own compose project/volumes and its own file in the shared front door's
+  # conf.d (see ci/shared-proxy/README.md). This group just stops two
+  # concurrent pushes to *this* repo from racing on the same project.
+  group: netbox-pki-deploy
+  cancel-in-progress: false
+
+jobs:
+  #
+  # 1. Pre-Clean — tears this repo's own stack down unconditionally before
+  # anything else runs, wiping its named volumes (see
+  # ci/scripts/pre-cleanup.sh) so every pipeline run starts NetBox from a
+  # completely empty database rather than layering on top of whatever the
+  # last run left behind. Never touches the shared front-door proxy or any
+  # sibling plugin's stack — see that script's own header comment. There is
+  # no separate "production" here (the deployed instance doubles as a
+  # manual-test/showcase environment, and doesn't retain data across
+  # deploys), so taking it down — and wiping it — for the Build+Test
+  # duration is an accepted tradeoff, not an oversight.
+  #
+  pre-clean:
+    runs-on: [self-hosted, netbox]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Load pinned versions
+        run: |
+          source versions.sh
+          echo "NETBOX_VERSION=$NETBOX_VERSION" >> "$GITHUB_ENV"
+
+      - name: Write runtime environment file
+        # docker-compose.yml's ${VAR:?err} guards mean even `down` needs
+        # this file present just to parse the compose file.
+        run: |
+          umask 077
+          cat > ci/docker/.env <<EOF
+          NETBOX_VERSION=${NETBOX_VERSION}
+          NETBOX_DOMAIN=${{ vars.NETBOX_DOMAIN }}
+          ACME_EMAIL=${{ vars.ACME_EMAIL }}
+          NETBOX_SECRET_KEY=${{ secrets.NETBOX_SECRET_KEY }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+          REDIS_CACHE_PASSWORD=${{ secrets.REDIS_CACHE_PASSWORD }}
+          NETBOX_SUPERUSER_PASSWORD=${{ secrets.NETBOX_SUPERUSER_PASSWORD }}
+          NETBOX_SUPERUSER_API_TOKEN=${{ secrets.NETBOX_SUPERUSER_API_TOKEN }}
+          NETBOX_SUPERUSER_API_KEY=${{ secrets.NETBOX_SUPERUSER_API_KEY }}
+          API_TOKEN_PEPPER_1=${{ secrets.API_TOKEN_PEPPER_1 }}
+          EOF
+          chmod 600 ci/docker/.env
+
+      - name: Tear down stack and prune stale build state
+        run: ci/scripts/pre-cleanup.sh
+        env:
+          COMPOSE_FILE: ${{ github.workspace }}/ci/docker/docker-compose.yml
+          ENV_FILE: ${{ github.workspace }}/ci/docker/.env
+
+      - name: Remove runtime environment file
+        if: always()
+        run: rm -f ci/docker/.env
+
+  #
+  # 2. Code-Review — pure static analysis, zero dependency on Docker or the
+  # target server, so it runs on a free GitHub-hosted runner instead of
+  # tying up the single self-hosted one. Fast-fail gate before anything
+  # gets built.
+  #
+  code-review:
+    needs: pre-clean
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install lint tools
+        run: |
+          pip install --quiet ruff==0.15.17 yamllint==1.35.1
+
+      - name: ruff check
+        run: ruff check netbox_pki/
+
+      - name: ruff format --check
+        run: ruff format --check netbox_pki/
+
+      - name: Validate test-deployment.json
+        run: python3 -m json.tool ci/scripts/test-deployment.json > /dev/null
+
+      - name: yamllint
+        run: |
+          # document-start/truthy disabled: GitHub Actions workflows
+          # idiomatically omit the `---` marker and use a bare `on:` key,
+          # which yamllint's default ruleset otherwise flags on every
+          # single workflow file — noise, not a real problem.
+          yamllint -d "{extends: default, rules: {line-length: {max: 140}, document-start: disable, truthy: disable}}" \
+            ci/docker/docker-compose.yml ci/shared-proxy/docker-compose.yml .github/workflows/
+
+      - name: shellcheck
+        run: |
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz" \
+            | tar -xJ -C /tmp
+          /tmp/shellcheck-v0.10.0/shellcheck ci/scripts/*.sh
+
+      - name: Check pyproject.toml / versions.sh version drift
+        # Would have caught pyproject.toml drifting to 0.1.0 while
+        # versions.sh moved on to next version — exactly the kind of silent
+        # mismatch that's easy to introduce and easy to miss by eye.
+        run: |
+          source versions.sh
+          PYPROJECT_VERSION=$(python3 -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          ")
+          if [ "$PYPROJECT_VERSION" != "$NETBOX_PKI_PLUGIN_VERSION" ]; then
+            echo "::error::pyproject.toml version ($PYPROJECT_VERSION) != \
+          NETBOX_PKI_PLUGIN_VERSION in versions.sh ($NETBOX_PKI_PLUGIN_VERSION)"
+            exit 1
+          fi
+          echo "OK: pyproject.toml matches versions.sh ($PYPROJECT_VERSION)"
+
+  #
+  # 3. Build — builds the NetBox+plugin image per versions.sh. Leaves the
+  # tagged image in the local Docker daemon for Test to reuse directly
+  # (same physical self-hosted runner, no artifact transfer needed).
+  #
+  build:
+    needs: code-review
+    runs-on: [self-hosted, netbox]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Load pinned versions
+        run: |
+          source versions.sh
+          echo "NETBOX_VERSION=$NETBOX_VERSION" >> "$GITHUB_ENV"
+
+      - name: Write runtime environment file
+        run: |
+          umask 077
+          cat > ci/docker/.env <<EOF
+          NETBOX_VERSION=${NETBOX_VERSION}
+          NETBOX_DOMAIN=${{ vars.NETBOX_DOMAIN }}
+          ACME_EMAIL=${{ vars.ACME_EMAIL }}
+          NETBOX_SECRET_KEY=${{ secrets.NETBOX_SECRET_KEY }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+          REDIS_CACHE_PASSWORD=${{ secrets.REDIS_CACHE_PASSWORD }}
+          NETBOX_SUPERUSER_PASSWORD=${{ secrets.NETBOX_SUPERUSER_PASSWORD }}
+          NETBOX_SUPERUSER_API_TOKEN=${{ secrets.NETBOX_SUPERUSER_API_TOKEN }}
+          NETBOX_SUPERUSER_API_KEY=${{ secrets.NETBOX_SUPERUSER_API_KEY }}
+          API_TOKEN_PEPPER_1=${{ secrets.API_TOKEN_PEPPER_1 }}
+          EOF
+          chmod 600 ci/docker/.env
+
+      - name: Pull pinned NetBox base image
+        run: docker pull "netboxcommunity/netbox:${NETBOX_VERSION}"
+
+      - name: Build image (NetBox + netbox_pki)
+        run: docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml build
+
+      - name: Remove runtime environment file
+        if: always()
+        run: rm -f ci/docker/.env
+
+  #
+  # 4. Test — brings the freshly-built image up for real (against the
+  # empty database Pre-Clean just left behind), wires it into the shared
+  # front door, and runs every check against it, fast-failing checks first
+  # (DB-independent system check) before the slower ones (Django test
+  # suite, live HTTPS smoke test). Deliberately left running on success: it
+  # doubles as the showcase/manual-test instance — starting empty each
+  # time, not carrying over data from the previous deploy.
+  #
+  test:
+    needs: build
+    runs-on: [self-hosted, netbox]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Load pinned versions
+        run: |
+          source versions.sh
+          echo "NETBOX_VERSION=$NETBOX_VERSION" >> "$GITHUB_ENV"
+
+      - name: Write runtime environment file
+        run: |
+          umask 077
+          cat > ci/docker/.env <<EOF
+          NETBOX_VERSION=${NETBOX_VERSION}
+          NETBOX_DOMAIN=${{ vars.NETBOX_DOMAIN }}
+          ACME_EMAIL=${{ vars.ACME_EMAIL }}
+          NETBOX_SECRET_KEY=${{ secrets.NETBOX_SECRET_KEY }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+          REDIS_CACHE_PASSWORD=${{ secrets.REDIS_CACHE_PASSWORD }}
+          NETBOX_SUPERUSER_PASSWORD=${{ secrets.NETBOX_SUPERUSER_PASSWORD }}
+          NETBOX_SUPERUSER_API_TOKEN=${{ secrets.NETBOX_SUPERUSER_API_TOKEN }}
+          NETBOX_SUPERUSER_API_KEY=${{ secrets.NETBOX_SUPERUSER_API_KEY }}
+          API_TOKEN_PEPPER_1=${{ secrets.API_TOKEN_PEPPER_1 }}
+          EOF
+          chmod 600 ci/docker/.env
+
+      - name: Issue or reuse TLS certificate
+        # Writes into the shared front door's cert directory — see
+        # ci/shared-proxy/README.md. DNS-01, so this doesn't depend on the
+        # front door already routing to this deploy.
+        run: ci/scripts/issue-cert.sh
+        env:
+          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
+          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+          WS_ApiKey: ${{ secrets.WS_API_KEY }}
+          WS_ApiSecret: ${{ secrets.WS_API_SECRET }}
+
+      - name: Render and reload shared front-door routing
+        run: ci/scripts/render-proxy-conf.sh
+        env:
+          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
+
+      - name: Deploy stack
+        # No --build: Build already produced the image; this just starts it.
+        run: docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml up -d --remove-orphans
+
+      - name: Wait for NetBox to become healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null "https://${{ vars.NETBOX_DOMAIN }}/login/"; then
+              echo "NetBox is up."
+              exit 0
+            fi
+            echo "Waiting for NetBox... ($i/30)"
+            sleep 10
+          done
+          echo "NetBox did not become healthy in time" >&2
+          exit 1
+
+      - name: Django system check
+        # DB-independent — catches issues like model field collisions
+        # immediately, instead of as a production crash-loop.
+        run: docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml exec -T netbox python manage.py check
+
+      - name: Check for unapplied/undeclared migrations
+        run: |
+          docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml exec -T netbox \
+            python manage.py makemigrations netbox_pki --check --dry-run
+
+      - name: Django test suite (netbox_pki)
+        run: |
+          docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml exec -T netbox \
+            python manage.py test netbox_pki
+
+      - name: Sync superuser API token to current secrets
+        # netbox-docker's own bootstrap (super_user.py) only ever creates a
+        # token once, at the moment the admin account itself is first
+        # created; on every later run — including every future deploy — it
+        # silently does nothing, so if NETBOX_SUPERUSER_API_TOKEN/_API_KEY
+        # are ever rotated the stored token silently drifts out of sync
+        # with what's actually configured, and API auth starts failing with
+        # a bare "Invalid v2 token" and no clue why. Re-deriving the token
+        # from the current secrets on every run — reading them directly
+        # from the GitHub Actions secrets context, never hand-typed —
+        # closes that gap for good and makes the step idempotent.
+        run: |
+          docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml exec -T \
+            -e SUPERUSER_API_TOKEN="${{ secrets.NETBOX_SUPERUSER_API_TOKEN }}" \
+            -e SUPERUSER_API_KEY="${{ secrets.NETBOX_SUPERUSER_API_KEY }}" \
+            netbox python manage.py shell -c "
+          import os
+          from users.choices import TokenVersionChoices
+          from users.models import Token, User
+
+          user = User.objects.get(username='admin')
+          Token.objects.filter(user=user).delete()
+          Token.objects.create(
+              user=user,
+              token=os.environ['SUPERUSER_API_TOKEN'],
+              version=TokenVersionChoices.V2,
+              key=os.environ['SUPERUSER_API_KEY'],
+          )
+          print('Superuser token synced.')
+          "
+
+      - name: Live smoke test (web + API POST/GET/PATCH/DELETE)
+        run: ci/scripts/smoke-test.sh
+        env:
+          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
+          NETBOX_SUPERUSER_API_TOKEN: ${{ secrets.NETBOX_SUPERUSER_API_TOKEN }}
+          NETBOX_SUPERUSER_API_KEY: ${{ secrets.NETBOX_SUPERUSER_API_KEY }}
+          NETBOX_SUPERUSER_PASSWORD: ${{ secrets.NETBOX_SUPERUSER_PASSWORD }}
+
+      - name: Dump logs on failure
+        # Grouped and netbox/netbox-worker called out first: when "Deploy
+        # stack" itself fails (container unhealthy before it ever serves
+        # traffic), the actual Django traceback is almost always in the
+        # netbox container's own log, easy to miss buried in combined
+        # multi-service output ordered by timestamp instead.
+        if: failure()
+        run: |
+          echo "::group::Container status"
+          docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml ps -a
+          echo "::endgroup::"
+          echo "::group::netbox logs"
+          docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml logs netbox --tail=500
+          echo "::endgroup::"
+          echo "::group::netbox-worker logs"
+          docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml logs netbox-worker --tail=200
+          echo "::endgroup::"
+          echo "::group::All services (combined, for anything else)"
+          docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml logs --tail=300
+          echo "::endgroup::"
+          echo "::group::Shared front-door proxy logs"
+          docker logs netbox-edge-proxy --tail=200 2>&1 || echo "front door not found"
+          echo "::endgroup::"
+
+      - name: Remove runtime environment file
+        if: always()
+        run: rm -f ci/docker/.env
+
+  #
+  # 5. Test Deployment — seeds the now-verified, freshly-migrated instance
+  # with representative demo data (contacts, contact groups, and one of
+  # every netbox_pki object type) via the REST API, so the showcase
+  # instance has real objects to look at and this plugin's own object graph
+  # (Requestor -> CertificateAuthority -> Certificate, Protocol) has
+  # something to link against.
+  #
+  test-deployment:
+    needs: test
+    runs-on: [self-hosted, netbox]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Seed demo data
+        run: python3 ci/scripts/test-deployment.py
+        env:
+          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
+          NETBOX_SUPERUSER_API_TOKEN: ${{ secrets.NETBOX_SUPERUSER_API_TOKEN }}
+          NETBOX_SUPERUSER_API_KEY: ${{ secrets.NETBOX_SUPERUSER_API_KEY }}
+
+  #
+  # 6. Deploy — the app is already running from Test, so this is purely a
+  # release-tagging step: idempotent (re-running against an already-tagged
+  # version is a no-op, not an error).
+  #
+  deploy:
+    needs: test-deployment
+    runs-on: [self-hosted, netbox]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Load pinned versions
+        run: |
+          source versions.sh
+          echo "NETBOX_PKI_PLUGIN_VERSION=$NETBOX_PKI_PLUGIN_VERSION" >> "$GITHUB_ENV"
+
+      - name: Tag release if not already tagged
+        run: |
+          TAG="v${NETBOX_PKI_PLUGIN_VERSION}"
+          if git tag -l "$TAG" | grep -qx "$TAG"; then
+            echo "Tag $TAG already exists — nothing to do."
+            exit 0
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Created and pushed tag $TAG"
