@@ -10,6 +10,7 @@ The plugin's Django app label is `netbox_pki`.
 
 > _TODO: add screenshots here._
 
+
 | Certificate list | Certificate Authority detail | PKI navigation menu |
 | --- | --- | --- |
 | _placeholder_ | _placeholder_ | _placeholder_ |
