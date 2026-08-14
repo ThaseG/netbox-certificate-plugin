@@ -22,18 +22,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  #
-  # 1. Pre-Clean — tears this repo's own stack down unconditionally before
-  # anything else runs, wiping its named volumes (see
-  # ci/scripts/pre-cleanup.sh) so every pipeline run starts NetBox from a
-  # completely empty database rather than layering on top of whatever the
-  # last run left behind. Never touches the shared front-door proxy or any
-  # sibling plugin's stack — see that script's own header comment. There is
-  # no separate "production" here (the deployed instance doubles as a
-  # manual-test/showcase environment, and doesn't retain data across
-  # deploys), so taking it down — and wiping it — for the Build+Test
-  # duration is an accepted tradeoff, not an oversight.
-  #
   pre-clean:
     runs-on: [self-hosted, netbox]
     steps:
