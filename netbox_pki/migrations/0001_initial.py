@@ -56,7 +56,7 @@ class Migration(migrations.Migration):
                 ('retry_count', models.PositiveIntegerField(default=3, verbose_name='Retry attempts')),
                 ('description', models.CharField(blank=True, max_length=200)),
                 ('comments', models.TextField(blank=True)),
-                ('tags', taggit.managers.TaggableManager(blank=True, through='extras.TaggedItem', to='extras.Tag')),
+                ('tags', taggit.managers.TaggableManager(through='extras.TaggedItem', to='extras.Tag')),
             ],
             options={
                 'verbose_name': 'Protocol',
@@ -76,7 +76,7 @@ class Migration(migrations.Migration):
                 ('comments', models.TextField(blank=True)),
                 ('contact', models.ManyToManyField(blank=True, related_name='pki_requestors', to='tenancy.contact', verbose_name='Contact users')),
                 ('contact_group', models.ManyToManyField(blank=True, related_name='pki_requestors', to='tenancy.contactgroup', verbose_name='Contact user groups')),
-                ('tags', taggit.managers.TaggableManager(blank=True, through='extras.TaggedItem', to='extras.Tag')),
+                ('tags', taggit.managers.TaggableManager(through='extras.TaggedItem', to='extras.Tag')),
             ],
             options={
                 'verbose_name': 'Requestor',
@@ -106,7 +106,7 @@ class Migration(migrations.Migration):
                 ('parent_ca', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='child_cas', to='netbox_pki.certificateauthority', verbose_name='Parent Certificate Authority')),
                 ('protocol', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='certificate_authorities', to='netbox_pki.protocol', verbose_name='Certificate Management Protocol')),
                 ('requestor', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='certificate_authorities', to='netbox_pki.requestor', verbose_name='Requesting entity/department/team')),
-                ('tags', taggit.managers.TaggableManager(blank=True, through='extras.TaggedItem', to='extras.Tag')),
+                ('tags', taggit.managers.TaggableManager(through='extras.TaggedItem', to='extras.Tag')),
             ],
             options={
                 'verbose_name': 'Certificate Authority',
@@ -134,7 +134,7 @@ class Migration(migrations.Migration):
                 ('comments', models.TextField(blank=True)),
                 ('ca', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='certificates', to='netbox_pki.certificateauthority', verbose_name='Certificate Authority')),
                 ('requestor', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='certificates', to='netbox_pki.requestor', verbose_name='Requesting entity/department/team')),
-                ('tags', taggit.managers.TaggableManager(blank=True, through='extras.TaggedItem', to='extras.Tag')),
+                ('tags', taggit.managers.TaggableManager(through='extras.TaggedItem', to='extras.Tag')),
             ],
             options={
                 'verbose_name': 'Certificate',
