@@ -9,7 +9,11 @@ FROM netboxcommunity/netbox:${NETBOX_VERSION}
 
 # Installed as a regular (non-editable) package — the image is rebuilt from
 # source on every deploy, so there's no need for an editable install.
+# LICENSE and README.md are required too: pyproject.toml's
+# `license = { file = "LICENSE" }` and `readme = "README.md"` make
+# hatchling fail the build if either isn't present alongside it.
 COPY pyproject.toml /opt/netbox-plugin-src/pyproject.toml
+COPY LICENSE README.md /opt/netbox-plugin-src/
 COPY netbox_pki /opt/netbox-plugin-src/netbox_pki
 RUN /usr/local/bin/uv pip install /opt/netbox-plugin-src
 
