@@ -12,12 +12,6 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  # Scoped to this repo's own pipeline only — a sibling plugin repo sharing
-  # the same runner (e.g. netbox-service-offerings-plugin) uses its own
-  # group name, so the two can deploy concurrently: each only touches its
-  # own compose project/volumes and its own file in the shared front door's
-  # conf.d (see ci/shared-proxy/README.md). This group just stops two
-  # concurrent pushes to *this* repo from racing on the same project.
   group: netbox-pki-deploy
   cancel-in-progress: false
 
