@@ -216,14 +216,20 @@ jobs:
           WS_ApiKey: ${{ secrets.WS_API_KEY }}
           WS_ApiSecret: ${{ secrets.WS_API_SECRET }}
 
-      - name: Render and reload shared front-door routing
-        run: ci/scripts/render-proxy-conf.sh
-        env:
-          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
-
       - name: Deploy stack
         # No --build: Build already produced the image; this just starts it.
         run: docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml up -d --remove-orphans
+
+      - name: Render and reload shared front-door routing
+        # Runs after the stack is up: the `netbox` container's network
+        # alias needs to exist for the front door to route to it (the
+        # nginx template resolves it at request time via a Docker DNS
+        # resolver, so this ordering isn't strictly required for `nginx -t`
+        # to pass — see that template's own comment — but routing traffic
+        # to a container that doesn't exist yet has no point either way).
+        run: ci/scripts/render-proxy-conf.sh
+        env:
+          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
 
       - name: Wait for NetBox to become healthy
         run: |
