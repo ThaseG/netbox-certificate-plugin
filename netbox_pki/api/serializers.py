@@ -152,6 +152,33 @@ class RequestorSerializer(NetBoxModelSerializer):
         )
         brief_fields = ('id', 'url', 'display', 'name')
 
+    def create(self, validated_data):
+        # DRF's ModelSerializer.create() refuses to handle M2M fields whose
+        # value is still a list at this point (raise_errors_on_nested_writes)
+        # — true here even though WritableNestedSerializer/many=True already
+        # resolved each entry to a real Contact/ContactGroup instance, since
+        # the *container* is still a plain list. Pop them and set the M2M
+        # relations ourselves after the instance (and its tags/custom
+        # fields, handled by the base classes' own create()) exists.
+        contacts = validated_data.pop('contact', None)
+        contact_groups = validated_data.pop('contact_group', None)
+        instance = super().create(validated_data)
+        if contacts is not None:
+            instance.contact.set(contacts)
+        if contact_groups is not None:
+            instance.contact_group.set(contact_groups)
+        return instance
+
+    def update(self, instance, validated_data):
+        contacts = validated_data.pop('contact', None)
+        contact_groups = validated_data.pop('contact_group', None)
+        instance = super().update(instance, validated_data)
+        if contacts is not None:
+            instance.contact.set(contacts)
+        if contact_groups is not None:
+            instance.contact_group.set(contact_groups)
+        return instance
+
 
 class CertificateAuthoritySerializer(NetBoxModelSerializer):
     status = ChoiceField(choices=CertificateStatusChoices, required=False)
