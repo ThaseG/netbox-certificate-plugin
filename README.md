@@ -153,7 +153,7 @@ python manage.py test netbox_pki
 
 ### CI/CD
 
-[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) runs on every push, as six staged jobs:
+[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) runs on every push, as seven staged jobs:
 
 1. **Pre-Clean** — tears down this repo's own previously running stack *and wipes its named volumes*
    ([`ci/scripts/pre-cleanup.sh`](ci/scripts/pre-cleanup.sh)), so every deploy starts NetBox from a completely
@@ -171,6 +171,10 @@ python manage.py test netbox_pki
    look at.
 6. **Deploy** — tags the repo `v<NETBOX_PKI_PLUGIN_VERSION>` (from `versions.sh`), if that tag doesn't already
    exist.
+7. **Post-Clean** — always runs, whatever happened in the stages above (success, a failure partway through, or a
+   cancellation): prunes dangling Docker images and build cache older than 24h on the runner, so disk usage doesn't
+   grow unboundedly between infrequent pushes. Never touches the running stack or the shared front door — pruning
+   only removes images/cache nothing is currently using.
 
 The instance left running after a successful **Test** stage doubles as a live showcase — but since every deploy
 wipes the database, it starts empty each time and never carries data over from a previous deploy. This is also why

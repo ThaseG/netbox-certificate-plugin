@@ -379,3 +379,27 @@ jobs:
           git tag "$TAG"
           git push origin "$TAG"
           echo "Created and pushed tag $TAG"
+
+  #
+  # 7. Post-Clean — always runs, whatever happened above (a normal Pre-Clean
+  # ->...-> Deploy pass, a failure partway through, or a cancellation), and
+  # prunes stale Docker build state on the runner: the same dangling-image
+  # and >24h-build-cache pruning Pre-Clean already does at the *start* of
+  # the *next* run, just also done at the *end* of *this* one, so disk usage
+  # on the runner doesn't grow unboundedly between infrequent pushes. Does
+  # NOT touch the running stack or the shared front door — `docker image
+  # prune` only removes dangling (untagged, unreferenced) images, never one
+  # a running container is actually using, so the live showcase instance
+  # (deliberately left running — see the Test stage's own comment) is
+  # unaffected either way.
+  #
+  post-clean:
+    needs: [pre-clean, code-review, build, test, test-deployment, deploy]
+    if: always()
+    runs-on: [self-hosted, netbox]
+    steps:
+      - name: Prune dangling images
+        run: docker image prune -f
+
+      - name: Prune build cache older than 24h
+        run: docker builder prune -f --filter "until=24h"
