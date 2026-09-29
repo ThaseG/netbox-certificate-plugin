@@ -1,3 +1,11 @@
+# Pinned project name. Without it, Compose derives the project name from
+# this file's directory ("docker"), which a sibling plugin repo with the
+# same ci/docker/ layout on the same runner also gets — both stacks then
+# share one project, so each repo's `up --remove-orphans` / `down --volumes`
+# replaces or wipes the other's containers and volumes. Must be unique per
+# repo on the runner.
+name: netbox-certificate-plugin
+
 services:
   postgres:
     image: docker.io/postgres:18-alpine
