@@ -11,6 +11,7 @@
           <tr><th scope="row">Certificate Authority</th><td>{{ object.ca|linkify }}</td></tr>
           <tr><th scope="row">Status</th><td>{% badge object.get_status_display bg_color=object.get_status_color %}</td></tr>
           <tr><th scope="row">Requestor</th><td>{{ object.requestor|linkify|placeholder }}</td></tr>
+          <tr><th scope="row">Tenant</th><td>{{ object.tenant|linkify|placeholder }}</td></tr>
           <tr><th scope="row">Alternative Names</th><td>{{ object.alt|placeholder }}</td></tr>
           <tr><th scope="row">Description</th><td>{{ object.description|placeholder }}</td></tr>
         </table>
@@ -21,6 +22,7 @@
           <tr><th scope="row">Expiration Time</th><td>{{ object.get_expiration_display|placeholder }}</td></tr>
           <tr><th scope="row">Created Date</th><td>{{ object.created_date|placeholder }}</td></tr>
           <tr><th scope="row">Expiration Date</th><td>{{ object.expiration_date|placeholder }}</td></tr>
+          <tr><th scope="row">Days Left</th><td>{% if object.days_remaining is None %}{{ ''|placeholder }}{% else %}{{ object.days_remaining }}{% endif %}</td></tr>
         </table>
       </div>
       {% include 'inc/panels/custom_fields.html' %}

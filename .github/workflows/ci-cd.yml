@@ -15,6 +15,11 @@ concurrency:
   group: netbox-pki-deploy
   cancel-in-progress: false
 
+env:
+  # Host port NetBox is published on (the external reverse proxy's
+  # upstream). Override with the NETBOX_HOST_PORT repository variable.
+  NETBOX_HOST_PORT: ${{ vars.NETBOX_HOST_PORT || '8081' }}
+
 jobs:
   pre-clean:
     runs-on: [self-hosted, netbox]
@@ -35,7 +40,9 @@ jobs:
           cat > ci/docker/.env <<EOF
           NETBOX_VERSION=${NETBOX_VERSION}
           NETBOX_DOMAIN=${{ vars.NETBOX_DOMAIN }}
-          ACME_EMAIL=${{ vars.ACME_EMAIL }}
+          NETBOX_SUPERUSER_EMAIL=${{ vars.NETBOX_SUPERUSER_EMAIL }}
+          NETBOX_HOST_PORT=${NETBOX_HOST_PORT}
+          RUNNER_HOST_IP=$(hostname -I | awk '{print $1}')
           NETBOX_SECRET_KEY=${{ secrets.NETBOX_SECRET_KEY }}
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
@@ -144,7 +151,9 @@ jobs:
           cat > ci/docker/.env <<EOF
           NETBOX_VERSION=${NETBOX_VERSION}
           NETBOX_DOMAIN=${{ vars.NETBOX_DOMAIN }}
-          ACME_EMAIL=${{ vars.ACME_EMAIL }}
+          NETBOX_SUPERUSER_EMAIL=${{ vars.NETBOX_SUPERUSER_EMAIL }}
+          NETBOX_HOST_PORT=${NETBOX_HOST_PORT}
+          RUNNER_HOST_IP=$(hostname -I | awk '{print $1}')
           NETBOX_SECRET_KEY=${{ secrets.NETBOX_SECRET_KEY }}
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
@@ -167,16 +176,53 @@ jobs:
         run: rm -f ci/docker/.env
 
   #
-  # 4. Test — brings the freshly-built image up for real (against the
+  # 4. CVE Scan — Trivy scans the image Build just left in the local Docker
+  # daemon for known HIGH/CRITICAL vulnerabilities. Report-only for now
+  # (--exit-code 0): the findings land in the job log but don't block the
+  # deploy, since most come from the upstream NetBox base image rather than
+  # this plugin. Trivy runs as a container with its vulnerability DB cached
+  # in the `trivy-cache` volume, which is removed again afterwards so it
+  # doesn't pile up on the runner.
+  #
+  cve-scan:
+    needs: build
+    runs-on: [self-hosted, netbox]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Load pinned versions
+        run: |
+          source versions.sh
+          echo "NETBOX_VERSION=$NETBOX_VERSION" >> "$GITHUB_ENV"
+
+      - name: Trivy image scan (HIGH, CRITICAL)
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v trivy-cache:/root/.cache/ \
+            aquasec/trivy:0.75.0 image \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            --no-progress \
+            "netbox-certificate-plugin/netbox:${NETBOX_VERSION}"
+
+      - name: Remove Trivy cache volume
+        if: always()
+        run: docker volume rm trivy-cache
+
+  #
+  # 5. Test — brings the freshly-built image up for real (against the
   # empty database Pre-Clean just left behind) and runs every check
   # against it, fast-failing checks first
   # (DB-independent system check) before the slower ones (Django test
-  # suite, live HTTPS smoke test). Deliberately left running on success: it
+  # suite, live HTTP smoke test). Deliberately left running on success: it
   # doubles as the showcase/manual-test instance — starting empty each
   # time, not carrying over data from the previous deploy.
   #
   test:
-    needs: build
+    needs: cve-scan
     runs-on: [self-hosted, netbox]
     steps:
       - name: Checkout
@@ -193,7 +239,9 @@ jobs:
           cat > ci/docker/.env <<EOF
           NETBOX_VERSION=${NETBOX_VERSION}
           NETBOX_DOMAIN=${{ vars.NETBOX_DOMAIN }}
-          ACME_EMAIL=${{ vars.ACME_EMAIL }}
+          NETBOX_SUPERUSER_EMAIL=${{ vars.NETBOX_SUPERUSER_EMAIL }}
+          NETBOX_HOST_PORT=${NETBOX_HOST_PORT}
+          RUNNER_HOST_IP=$(hostname -I | awk '{print $1}')
           NETBOX_SECRET_KEY=${{ secrets.NETBOX_SECRET_KEY }}
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
@@ -212,7 +260,9 @@ jobs:
       - name: Wait for NetBox to become healthy
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS -o /dev/null "https://${{ vars.NETBOX_DOMAIN }}/login/"; then
+            # Directly against the published port, not through the external
+            # reverse proxy — TLS/routing is that VM's concern, not this pipeline's.
+            if curl -fsS -o /dev/null "http://localhost:${NETBOX_HOST_PORT}/login/"; then
               echo "NetBox is up."
               exit 0
             fi
@@ -271,7 +321,7 @@ jobs:
       - name: Live smoke test (web + API POST/GET/PATCH/DELETE)
         run: ci/scripts/smoke-test.sh
         env:
-          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
+          NETBOX_URL: http://localhost:${{ env.NETBOX_HOST_PORT }}
           NETBOX_SUPERUSER_API_TOKEN: ${{ secrets.NETBOX_SUPERUSER_API_TOKEN }}
           NETBOX_SUPERUSER_API_KEY: ${{ secrets.NETBOX_SUPERUSER_API_KEY }}
           NETBOX_SUPERUSER_PASSWORD: ${{ secrets.NETBOX_SUPERUSER_PASSWORD }}
@@ -302,7 +352,7 @@ jobs:
         run: rm -f ci/docker/.env
 
   #
-  # 5. Test Deployment — seeds the now-verified, freshly-migrated instance
+  # 6. Test Deployment — seeds the now-verified, freshly-migrated instance
   # with representative demo data (contacts, contact groups, and one of
   # every netbox_pki object type) via the REST API, so the showcase
   # instance has real objects to look at and this plugin's own object graph
@@ -319,12 +369,12 @@ jobs:
       - name: Seed demo data
         run: python3 ci/scripts/test-deployment.py
         env:
-          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
+          NETBOX_URL: http://localhost:${{ env.NETBOX_HOST_PORT }}
           NETBOX_SUPERUSER_API_TOKEN: ${{ secrets.NETBOX_SUPERUSER_API_TOKEN }}
           NETBOX_SUPERUSER_API_KEY: ${{ secrets.NETBOX_SUPERUSER_API_KEY }}
 
   #
-  # 6. Deploy — the app is already running from Test, so this is purely a
+  # 7. Deploy — the app is already running from Test, so this is purely a
   # release-tagging step: idempotent (re-running against an already-tagged
   # version is a no-op, not an error).
   #

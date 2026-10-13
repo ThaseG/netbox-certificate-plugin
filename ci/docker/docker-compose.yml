@@ -91,8 +91,14 @@ services:
       # (including our own test suite) tries to create a token, not just a
       # cosmetic startup warning as the log message might suggest.
       API_TOKEN_PEPPER_1: ${API_TOKEN_PEPPER_1:?API_TOKEN_PEPPER_1 must be set}
-      ALLOWED_HOSTS: ${NETBOX_DOMAIN:?NETBOX_DOMAIN must be set} localhost
-      CSRF_TRUSTED_ORIGINS: https://${NETBOX_DOMAIN:?NETBOX_DOMAIN must be set}
+      # Space-separated (netbox-docker splits these on spaces).
+      # NETBOX_DOMAIN: public hostname served by the external reverse proxy.
+      # RUNNER_HOST_IP: the runner's own IP, for direct access on the
+      # published port (detected by the pipeline).
+      # localhost: required by the healthcheck below and by the CI smoke
+      # test / demo-data seeding, which call http://localhost:<port>.
+      ALLOWED_HOSTS: ${NETBOX_DOMAIN:-} ${RUNNER_HOST_IP:-} localhost
+      CSRF_TRUSTED_ORIGINS: https://${NETBOX_DOMAIN:-localhost}
       DB_HOST: postgres
       DB_NAME: netbox
       DB_USER: netbox
@@ -105,7 +111,7 @@ services:
       REDIS_CACHE_DATABASE: 1
       SKIP_SUPERUSER: "false"
       SUPERUSER_NAME: admin
-      SUPERUSER_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set}
+      SUPERUSER_EMAIL: ${NETBOX_SUPERUSER_EMAIL:-admin@example.com}
       SUPERUSER_PASSWORD: ${NETBOX_SUPERUSER_PASSWORD:?NETBOX_SUPERUSER_PASSWORD must be set}
       SUPERUSER_API_TOKEN: ${NETBOX_SUPERUSER_API_TOKEN:?NETBOX_SUPERUSER_API_TOKEN must be set}
       # netbox-docker's super_user.py only creates a token for the
@@ -134,30 +140,25 @@ services:
       - netbox-media-files:/opt/netbox/netbox/media:rw
       - netbox-reports-files:/opt/netbox/netbox/reports:rw
       - netbox-scripts-files:/opt/netbox/netbox/scripts:rw
+    ports:
+      # Published on the runner's host port — the upstream the external
+      # reverse proxy (on its own VM) forwards to. TLS termination happens
+      # there, not in this stack. Defaults to 8081 rather than 8080 so it
+      # doesn't collide with a sibling plugin repo's stack on the same
+      # runner.
+      - "${NETBOX_HOST_PORT:-8081}:8080"
     networks:
-      netbox:
-      # Joins the shared nginx reverse proxy's network (managed by the
-      # separate nginx project, which also owns TLS certificates) under a
-      # stable alias so it can be reached as
-      # http://netbox-certificate-plugin:8080 regardless of which compose
-      # project (this repo, or a sibling plugin repo sharing the same
-      # runner) created this container. The "edge" network itself is NOT
-      # created or torn down by this repo's pipeline. `external: true`
-      # below means `docker compose up` will fail loudly if that setup
-      # hasn't been done yet, rather than silently creating a private
-      # same-named network no other stack can actually see.
-      edge:
-        aliases:
-          - netbox-certificate-plugin
+      - netbox
 
   netbox-worker:
     <<: *netbox
     depends_on:
       netbox:
         condition: service_healthy
+    # Overrides the published port inherited from the netbox anchor: the
+    # worker doesn't serve HTTP, and two containers can't bind one host port.
+    ports: []
     networks:
-      # No "edge" here: only the web process needs to be reachable by the
-      # shared nginx proxy; the worker doesn't serve HTTP.
       - netbox
     command:
       - /opt/netbox/venv/bin/python
@@ -172,9 +173,6 @@ services:
 networks:
   netbox:
     driver: bridge
-  edge:
-    name: netbox-edge
-    external: true
 
 volumes:
   netbox-postgres:

@@ -1,8 +1,10 @@
 import django_filters
 from django.db.models import Q
 from netbox.filtersets import NetBoxModelFilterSet
+from tenancy.models import Tenant
 
-from .choices import CertificateStatusChoices, ProtocolTypeChoices
+from .choices import CertificateExpiryStateChoices, CertificateStatusChoices, ProtocolTypeChoices
+from .expiry import expiry_state_q
 from .models import Certificate, CertificateAuthority, Protocol, Requestor
 
 
@@ -74,10 +76,33 @@ class CertificateFilterSet(NetBoxModelFilterSet):
         queryset=Requestor.objects.all(),
         label='Requestor (ID)',
     )
+    tenant_id = django_filters.ModelMultipleChoiceFilter(
+        queryset=Tenant.objects.all(),
+        label='Tenant (ID)',
+    )
+    tenant = django_filters.ModelMultipleChoiceFilter(
+        field_name='tenant__slug',
+        queryset=Tenant.objects.all(),
+        to_field_name='slug',
+        label='Tenant (slug)',
+    )
+    expiry_state = django_filters.MultipleChoiceFilter(
+        choices=CertificateExpiryStateChoices,
+        method='filter_expiry_state',
+        label='Expiry state',
+    )
 
     class Meta:
         model = Certificate
-        fields = ('id', 'cn', 'status', 'expiration')
+        fields = ('id', 'cn', 'status', 'expiration', 'created_date', 'expiration_date')
+
+    def filter_expiry_state(self, queryset, name, value):
+        if not value:
+            return queryset
+        q = Q()
+        for state in value:
+            q |= expiry_state_q(state)
+        return queryset.filter(q)
 
     def search(self, queryset, name, value):
         if not value.strip():

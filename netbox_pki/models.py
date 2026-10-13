@@ -377,6 +377,13 @@ class Certificate(NetBoxModel):
         null=True,
         verbose_name='Requesting entity/department/team',
     )
+    tenant = models.ForeignKey(
+        to='tenancy.Tenant',
+        on_delete=models.SET_NULL,
+        related_name='pki_certificates',
+        blank=True,
+        null=True,
+    )
     created_date = models.DateField(
         blank=True,
         null=True,
@@ -399,7 +406,7 @@ class Certificate(NetBoxModel):
     description = models.CharField(max_length=200, blank=True)
     comments = models.TextField(blank=True)
 
-    clone_fields = ['ca', 'expiration', 'status', 'requestor']
+    clone_fields = ['ca', 'expiration', 'status', 'requestor', 'tenant']
 
     class Meta:
         ordering = ('cn',)
@@ -414,6 +421,13 @@ class Certificate(NetBoxModel):
 
     def get_status_color(self):
         return CertificateStatusChoices.colors.get(self.status)
+
+    @property
+    def days_remaining(self):
+        """Days until expiration_date (negative once expired), or None if no date is set."""
+        if self.expiration_date is None:
+            return None
+        return (self.expiration_date - timezone.localdate()).days
 
     def save(self, *args, **kwargs):
         if not self.created_date:

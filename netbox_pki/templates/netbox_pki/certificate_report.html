@@ -1,0 +1,83 @@
+{% extends 'generic/_base.html' %}
+{% load helpers %}
+{% load i18n %}
+
+{% block title %}{% trans "Certificate Report" %}{% endblock %}
+
+{% block subtitle %}
+  <div class="text-secondary">
+    {% trans "Certificate expiry overview" %} &middot; {% now "Y-m-d" %}
+  </div>
+{% endblock subtitle %}
+
+{% block content %}
+  <style>
+    .cert-report-count { font-size: 2.5rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+    .cert-report-card { color: inherit; text-decoration: none; }
+    .cert-report-card:hover .card { box-shadow: 0 0 0 1px var(--tblr-border-color-dark, rgba(0, 0, 0, 0.2)); }
+  </style>
+
+  {# Filters #}
+  <div class="card mb-3">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label" for="{{ filter_form.ca_id.id_for_label }}">{{ filter_form.ca_id.label }}</label>
+          {{ filter_form.ca_id }}
+        </div>
+        <div class="col-md-5">
+          <label class="form-label" for="{{ filter_form.tenant_id.id_for_label }}">{{ filter_form.tenant_id.label }}</label>
+          {{ filter_form.tenant_id }}
+        </div>
+        <div class="col-md-2 text-end">
+          <button type="submit" class="btn btn-primary">
+            <i class="mdi mdi-filter" aria-hidden="true"></i> {% trans "Filter" %}
+          </button>
+          <a href="{% url 'plugins:netbox_pki:certificate_report' %}" class="btn btn-outline-secondary">{% trans "Clear" %}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# Counters — each one narrows the table below to that state #}
+  <div class="row row-cards mb-3">
+    {% for card in cards %}
+      <div class="col-sm-6 col-lg">
+        <a href="{{ card.url }}" class="cert-report-card" title="{% if card.active %}{% trans 'Show all certificates' %}{% else %}{% trans 'Show only these certificates' %}{% endif %}">
+          <div class="card h-100{% if card.active %} border-{{ card.color }}{% endif %}">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="fw-bold">{{ card.label }}</div>
+                <i class="mdi {{ card.icon }} text-{{ card.color }} fs-2" aria-hidden="true"></i>
+              </div>
+              <div class="cert-report-count text-{{ card.color }} mt-2">{{ card.count }}</div>
+            </div>
+          </div>
+        </a>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if no_date_count %}
+    <div class="alert alert-secondary">
+      {% blocktrans count counter=no_date_count %}{{ counter }} certificate has no expiration date and is not counted above.{% plural %}{{ counter }} certificates have no expiration date and are not counted above.{% endblocktrans %}
+    </div>
+  {% endif %}
+
+  {# All matching certificates, soonest expiration first #}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h2 class="card-title mb-0">
+        {% trans "Certificates" %}
+        {% if state_label %}
+          <span class="badge text-bg-secondary ms-1">{{ state_label }}</span>
+          <a href="{{ clear_state_url }}" class="small ms-1">{% trans "show all" %}</a>
+        {% endif %}
+      </h2>
+      <a href="{{ export_url }}" class="btn btn-sm btn-outline-secondary">
+        <i class="mdi mdi-download" aria-hidden="true"></i> {% trans "Export CSV" %}
+      </a>
+    </div>
+    {% include 'builtins/htmx_table.html' with viewname='plugins:netbox_pki:certificate_list' url_params=table_params %}
+  </div>
+{% endblock content %}

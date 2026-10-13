@@ -1,6 +1,6 @@
 from django import forms
 from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm
-from tenancy.models import Contact, ContactGroup
+from tenancy.models import Contact, ContactGroup, Tenant
 from utilities.forms.fields import (
     CommentField,
     DynamicModelChoiceField,
@@ -12,6 +12,7 @@ from utilities.forms.rendering import FieldSet
 from .choices import (
     CAExpirationChoices,
     CertificateExpirationChoices,
+    CertificateExpiryStateChoices,
     CertificateStatusChoices,
     EnvironmentChoices,
     ProtocolTypeChoices,
@@ -233,10 +234,11 @@ class CertificateAuthorityFilterForm(NetBoxModelFilterSetForm):
 class CertificateForm(NetBoxModelForm):
     ca = DynamicModelChoiceField(queryset=CertificateAuthority.objects.all(), label='Certificate Authority')
     requestor = DynamicModelChoiceField(queryset=Requestor.objects.all(), required=False)
+    tenant = DynamicModelChoiceField(queryset=Tenant.objects.all(), required=False)
     comments = CommentField()
 
     fieldsets = (
-        FieldSet('cn', 'ca', 'status', 'requestor', 'description', name='Certificate'),
+        FieldSet('cn', 'ca', 'status', 'requestor', 'tenant', 'description', name='Certificate'),
         FieldSet('expiration', 'created_date', 'expiration_date', name='Lifecycle'),
         FieldSet('alt', 'certificate', 'private_key', 'csr', name='Cryptographic Material'),
         FieldSet('tags', name='Tags'),
@@ -252,6 +254,7 @@ class CertificateForm(NetBoxModelForm):
             'certificate',
             'private_key',
             'requestor',
+            'tenant',
             'created_date',
             'expiration_date',
             'alt',
@@ -272,9 +275,12 @@ class CertificateFilterForm(NetBoxModelFilterSetForm):
     model = Certificate
     fieldsets = (
         FieldSet('q', 'filter_id', 'tag'),
-        FieldSet('status', 'expiration', 'ca_id', 'requestor_id', name='Attributes'),
+        FieldSet('status', 'expiry_state', 'expiration', 'ca_id', 'requestor_id', 'tenant_id', name='Attributes'),
     )
     status = forms.MultipleChoiceField(choices=CertificateStatusChoices, required=False)
+    expiry_state = forms.MultipleChoiceField(
+        choices=CertificateExpiryStateChoices, required=False, label='Expiry state'
+    )
     expiration = forms.MultipleChoiceField(choices=CertificateExpirationChoices, required=False)
     ca_id = DynamicModelMultipleChoiceField(
         queryset=CertificateAuthority.objects.all(),
@@ -282,4 +288,22 @@ class CertificateFilterForm(NetBoxModelFilterSetForm):
         label='Certificate Authority',
     )
     requestor_id = DynamicModelMultipleChoiceField(queryset=Requestor.objects.all(), required=False, label='Requestor')
+    tenant_id = DynamicModelMultipleChoiceField(queryset=Tenant.objects.all(), required=False, label='Tenant')
     tag = TagFilterField(Certificate)
+
+
+#
+# Reports
+#
+
+
+class CertificateReportFilterForm(forms.Form):
+    """Filters for the Certificate Report (views.CertificateReportView): narrow both the
+    counters and the table to some Certificate Authorities and/or tenants."""
+
+    ca_id = DynamicModelMultipleChoiceField(
+        queryset=CertificateAuthority.objects.all(),
+        required=False,
+        label='Certificate Authority',
+    )
+    tenant_id = DynamicModelMultipleChoiceField(queryset=Tenant.objects.all(), required=False, label='Tenant')

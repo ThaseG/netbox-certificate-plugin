@@ -23,8 +23,16 @@ menu_items = (
     ),
 )
 
+report_items = (
+    PluginMenuItem(
+        link='plugins:netbox_pki:certificate_report',
+        link_text='Certificate Report',
+        permissions=['netbox_pki.view_certificate'],
+    ),
+)
+
 menu = PluginMenu(
     label='PKI',
-    groups=(('Certificates', menu_items),),
+    groups=(('Certificates', menu_items), ('Reports', report_items)),
     icon_class='mdi mdi-certificate-outline',
 )

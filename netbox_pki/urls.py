@@ -58,4 +58,6 @@ urlpatterns = (
         name='protocol_changelog',
         kwargs={'model': models.Protocol},
     ),
+    # Reports
+    path('reports/certificates/', views.CertificateReportView.as_view(), name='certificate_report'),
 )

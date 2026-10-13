@@ -12,12 +12,35 @@ class CertificateStatusChoices(ChoiceSet):
     STATUS_AUTOMATIC_CSR = 'automatic-csr'
     STATUS_AUTOMATIC_CREATED = 'automatic-created'
     STATUS_MANUAL = 'manual'
+    STATUS_REVOKED = 'revoked'
 
     CHOICES = [
         (STATUS_AUTOMATIC_REQUESTED, 'Automatic - Requested', 'blue'),
         (STATUS_AUTOMATIC_CSR, 'Automatic - CSR', 'cyan'),
         (STATUS_AUTOMATIC_CREATED, 'Automatic - Created', 'green'),
         (STATUS_MANUAL, 'Manual', 'gray'),
+        (STATUS_REVOKED, 'Revoked', 'red'),
+    ]
+
+
+class CertificateExpiryStateChoices(ChoiceSet):
+    """
+    Derived (not stored) state of a Certificate, computed from its status and expiration_date
+    against today's date — see expiry.py. Used by the Certificate Report and its filter.
+    """
+
+    STATE_VALID = 'valid'
+    STATE_EXPIRED = 'expired'
+    STATE_REVOKED = 'revoked'
+    STATE_EXPIRING_30 = 'expiring-30'
+    STATE_EXPIRING_10 = 'expiring-10'
+
+    CHOICES = [
+        (STATE_VALID, 'Valid', 'green'),
+        (STATE_EXPIRED, 'Expired', 'red'),
+        (STATE_REVOKED, 'Revoked', 'gray'),
+        (STATE_EXPIRING_30, 'Expiration in 30 days', 'orange'),
+        (STATE_EXPIRING_10, 'Expiration in 10 days', 'red'),
     ]
 
 

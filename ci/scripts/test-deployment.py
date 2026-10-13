@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Seeds the freshly-deployed NetBox instance with representative demo data
-(contacts, contact groups, and one of every netbox_pki object type) via the
+(tenants, contacts, contact groups, and one of every netbox_pki object type) via the
 REST API, so there's something real to look at when showcasing/testing the
 plugin manually — per its own request, this deployment seeds only what's
 needed to exercise netbox_pki itself, not a full core-NetBox inventory.
 
 Every CI deploy wipes the database (ci/scripts/pre-cleanup.sh), so this
 always runs against an empty instance — no need to worry about existing
-data or idempotency. Run after smoke-test.sh, against the same live HTTPS
-instance and superuser token.
+data or idempotency. Run after smoke-test.sh, against the same live
+instance (NETBOX_URL, default http://localhost:8081) and superuser token.
 
 All the actual data lives in test-deployment.json, next to this script, as
 an ordered mapping of {api_endpoint_path: [payload, ...]}. This script is a
@@ -27,15 +27,23 @@ before any of its children. JSON can't hold comments, so that ordering
 requirement — and the object graph itself — is documented here and in
 REFERENCE_FIELDS instead.
 
+Any string value of the form "@today", "@today+N" or "@today-N" is replaced
+with that ISO date relative to the day the script runs (see
+resolve_relative_date()) — so demo certificates land in every Certificate
+Report state (expired, expiring within 10/30 days, ...) on every deploy,
+rather than drifting as fixed dates in the JSON age.
+
 Stdlib-only (urllib), matching smoke-test.sh's dependency-free approach —
 no extra `pip install` needed on the runner.
 """
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
+from datetime import date, timedelta
 from pathlib import Path
 
 BASE_URL = None
@@ -67,8 +75,11 @@ REFERENCE_FIELDS = {
     'plugins/pki/certificates/': {
         'ca': 'plugins/pki/cas/',
         'requestor': 'plugins/pki/requestors/',
+        'tenant': 'tenancy/tenants/',
     },
 }
+
+RELATIVE_DATE = re.compile(r'^@today(?:([+-])(\d+))?$')
 
 
 def env(name):
@@ -133,6 +144,16 @@ def resolve_field(value, target_endpoint, created_objects):
     return resolve(value, target_endpoint, created_objects)
 
 
+def resolve_relative_date(value):
+    """'@today', '@today+N' or '@today-N' -> ISO date string; anything else unchanged."""
+    match = RELATIVE_DATE.match(value) if isinstance(value, str) else None
+    if not match:
+        return value
+    sign, days = match.groups()
+    offset = int(days or 0) * (-1 if sign == '-' else 1)
+    return (date.today() + timedelta(days=offset)).isoformat()
+
+
 def create_all(data):
     created_objects = {}  # endpoint -> {slug-or-name-or-cn: id}
     for endpoint, payloads in data.items():
@@ -140,7 +161,7 @@ def create_all(data):
         reference_fields = REFERENCE_FIELDS.get(endpoint, {})
         cache = created_objects.setdefault(endpoint, {})
         for payload in payloads:
-            resolved = dict(payload)
+            resolved = {field: resolve_relative_date(value) for field, value in payload.items()}
             for field, target_endpoint in reference_fields.items():
                 if field in resolved and resolved[field] is not None:
                     resolved[field] = resolve_field(resolved[field], target_endpoint, created_objects)
@@ -158,7 +179,7 @@ def create_all(data):
 
 def main():
     global BASE_URL, API_AUTH_HEADER
-    BASE_URL = f'https://{env("NETBOX_DOMAIN")}'
+    BASE_URL = os.environ.get('NETBOX_URL', 'http://localhost:8081').rstrip('/')
     # Same v2-token bearer scheme as smoke-test.sh: Bearer nbt_<key>.<secret>
     API_AUTH_HEADER = f'Bearer nbt_{env("NETBOX_SUPERUSER_API_KEY")}.{env("NETBOX_SUPERUSER_API_TOKEN")}'
 

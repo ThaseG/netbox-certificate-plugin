@@ -4,7 +4,29 @@
       "Bash(git rm *)",
       "Bash(python3 -c \"import yaml,sys;[yaml.safe_load\\(open\\(f\\)\\) for f in ['.github/workflows/ci-cd.yml','ci/docker/docker-compose.yml']];print\\('yaml ok'\\)\")",
       "Bash(python3 -c \"import yaml;[yaml.safe_load\\(open\\(f\\)\\) for f in ['.github/workflows/ci-cd.yml','ci/docker/docker-compose.yml']];print\\('yaml ok'\\)\")",
-      "Bash(python3 -c \"import yaml;print\\(list\\(yaml.safe_load\\(open\\('.github/workflows/ci-cd.yml'\\)\\)['jobs']\\)\\)\")"
+      "Bash(python3 -c \"import yaml;print\\(list\\(yaml.safe_load\\(open\\('.github/workflows/ci-cd.yml'\\)\\)['jobs']\\)\\)\")",
+      "Read(//Users/andrej.hyben/Documents/Git.nosync/**)",
+      "Bash(cd /Users/andrej.hyben/Documents/Git.nosync && grep -rlsI -e \"netbox-edge\" -e \"netbox-certificate-plugin\" --exclude-dir=.git --exclude-dir=node_modules . 2>/dev/null | grep -v \"^./netbox-certificate-plugin/\" | head -20)",
+      "Bash(python3 -c \"import yaml;yaml.safe_load\\(open\\('.github/workflows/ci-cd.yml'\\)\\);print\\('ok'\\)\")",
+      "Bash(cd /Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin && cat .github/workflows/ci-cd.yml && sed -n 1,60p ci/scripts/smoke-test.sh && grep -n \"NETBOX_DOMAIN\\\\|BASE_URL\\\\|localhost\\\\|https\" ci/scripts/test-deployment.py | head)",
+      "Read(//Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin/**)",
+      "Bash(grep -rniI -e nginx -e \"netbox-edge\" -e ACME_EMAIL -e \"edge\" -e \"https://\\\\${\" --exclude-dir=.git --exclude-dir=.claude --exclude-dir=netbox_pki .)",
+      "Bash(python3 -c \"import yaml;[yaml.safe_load\\(open\\(f\\)\\) for f in ['.github/workflows/ci-cd.yml','ci/docker/docker-compose.yml']];print\\('ok'\\)\")",
+      "Bash(bash -n ci/scripts/smoke-test.sh ci/scripts/pre-cleanup.sh)",
+      "Bash(awk 'length>140{print FILENAME\": \"FNR}' .github/workflows/ci-cd.yml ci/docker/docker-compose.yml)",
+      "Bash(cd /Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin && grep -rliI -e \"3c\" -e \"report\" --include=*.py --include=*.html service_specification | head -20)",
+      "Bash(cd /Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin && grep -rliI -e \"3c\" -e \"report\" service_specification | grep -v migrations | head -20)",
+      "Bash(cd /Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin/service_specification && wc -l three_c.py templates/service_specification/three_c_report.html && grep -n -i -B2 -A40 \"class.*three\\\\|ThreeC\\\\|three_c\" views.py | head -150; grep -n -i \"three\\\\|report\" urls.py navigation.py tables.py filtersets.py forms.py)",
+      "Read(//Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin/service_specification/**)",
+      "Bash(cd /Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin/service_specification && grep -n \"class ThreeCReportView\" -A120 views.py | head -170; sed -n 1,90p navigation.py; sed -n 1500,1530p forms.py)",
+      "Read(//Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin/service_specification/templates/service_specification/**)",
+      "Bash(cd /Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin/service_specification && sed -n 1,20p views.py; grep -n \"TenantColumn\\\\|tenant = \" tables.py | head; grep -n \"TenantSerializer\" api/serializers.py | head -3; cd ../../netbox-certificate-plugin && sed -n 1,40p netbox_pki/tests/test_models.py && grep -n \"def test\" netbox_pki/tests/test_models.py && sed -n 140,180p ci/scripts/test-deployment.json && grep -n \"tenancy\\\\|\\\\\"tenant\" ci/scripts/test-deployment.json ci/scripts/test-deployment.py)",
+      "Read(//Users/andrej.hyben/Documents/**)",
+      "Bash(python3 -c ' *)",
+      "WebFetch(domain:hub.docker.com)",
+      "Bash(grep -n \"^  [a-z-]*:$\\\\|needs:\\\\|^  # [0-9]\\\\.\\\\|Remove runtime environment\" .github/workflows/ci-cd.yml)",
+      "Bash(python3 /private/tmp/claude-501/-Users-andrej-hyben-Documents-Git-nosync-netbox-certificate-plugin/01318f12-93a5-4642-8dc7-f9b4670b5f48/scratchpad/gen_certs.py ci/scripts/test-deployment.json)",
+      "Bash(sed -n '/\"plugins\\\\/pki\\\\/certificates\\\\/\"/,+16p' ci/scripts/test-deployment.json)"
     ]
   }
 }

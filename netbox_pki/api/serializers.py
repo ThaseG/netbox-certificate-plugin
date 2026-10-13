@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from netbox.api.fields import ChoiceField
 from netbox.api.serializers import NetBoxModelSerializer, WritableNestedSerializer
 from rest_framework import serializers
-from tenancy.api.serializers import ContactGroupSerializer, ContactSerializer
+from tenancy.api.serializers import ContactGroupSerializer, ContactSerializer, TenantSerializer
 
 from ..choices import (
     AcmeChallengeTypeChoices,
@@ -227,6 +227,7 @@ class CertificateSerializer(NetBoxModelSerializer):
     expiration = ChoiceField(choices=CertificateExpirationChoices, required=False)
     status = ChoiceField(choices=CertificateStatusChoices, required=False)
     requestor = NestedRequestorSerializer(required=False, allow_null=True)
+    tenant = TenantSerializer(nested=True, required=False, allow_null=True)
 
     class Meta:
         model = Certificate
@@ -242,6 +243,7 @@ class CertificateSerializer(NetBoxModelSerializer):
             'certificate',
             'private_key',
             'requestor',
+            'tenant',
             'created_date',
             'expiration_date',
             'alt',

@@ -19,7 +19,7 @@ The plugin's Django app label is `netbox_pki`.
 
 | Model | Description |
 | --- | --- |
-| **Certificate** | An issued certificate: CN, issuing CA, status, lifecycle dates, alternative names, and a reference to where its material lives (`private_key` is a Vault URL, never the key itself). |
+| **Certificate** | An issued certificate: CN, issuing CA, status (including Revoked), optional NetBox Tenant, lifecycle dates, alternative names, and a reference to where its material lives (`private_key` is a Vault URL, never the key itself). |
 | **CertificateAuthority** | A CA's own metadata: status, enrollment protocol, an optional parent CA (for intermediate/sub-CAs — a CSR can only be set when a parent is chosen, and a child's expiration can't outlive its parent's), and a default certificate expiration for certs it issues. |
 | **Requestor** | The team/entity that requested a Certificate or CA, optionally linked to NetBox Contacts and/or Contact Groups. |
 | **Protocol** | Enrollment protocol configuration — ACME or SCEP — with fields required conditionally on the chosen type (e.g. DNS-01 challenge settings only when `acme_challenge_type` is `dns-01`; SCEP's endpoint/fingerprint/algorithm fields only when `type` is `scep`). |
@@ -82,14 +82,14 @@ Restart NetBox (`systemctl restart netbox netbox-rq` or equivalent).
 This repo includes a Docker Compose deployment under [`ci/docker/`](ci/docker/) that builds NetBox with this plugin
 (and nothing else — no third-party plugins bundled, since this stack exists solely to build/test/showcase
 netbox_pki itself) baked in via [`ci/docker/Dockerfile-Plugins`](ci/docker/Dockerfile-Plugins). It's what
-[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) deploys automatically on every push. HTTPS is provided
-by a separate nginx project (see [Reverse proxy and TLS](#reverse-proxy-and-tls)). To run it yourself, once the
-`netbox-edge` Docker network exists:
+[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) deploys automatically on every push. NetBox is served over
+plain HTTP on host port `8081` (override with `NETBOX_HOST_PORT`). To run it yourself:
 
 ```bash
 source versions.sh
 cp ci/docker/.env.example ci/docker/.env   # fill in real values, see comments in the file
 docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml up -d --build
+# then open http://localhost:8081/
 ```
 
 ## Usage
@@ -99,6 +99,22 @@ docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml up -d -
 Once enabled, a **PKI** entry appears in NetBox's plugins navigation menu, listing Certificates, Certificate
 Authorities, Requestors and Protocols. Each model gets the standard NetBox list/detail/add/edit/delete views; a
 Certificate Authority's detail page also shows its child CAs and the certificates it has issued.
+
+### Certificate Report
+
+**PKI → Reports → Certificate Report** gives an expiry overview of all certificates:
+
+- Five counters on top: **Valid**, **Expired**, **Revoked**, **Expiration in 30 days** and **Expiration in 10
+  days**. Revoked certificates (status *Revoked*) only count as Revoked, whatever their dates; the two
+  "Expiration in" counters are subsets of Valid. Certificates without an expiration date aren't counted, and a note
+  says how many there are.
+- Below them, a table of every matching certificate, sorted by expiration date (soonest first) with a colour-coded
+  **Days Left** column. You can re-sort it by any column and export it to CSV.
+- Filter both the counters and the table by **Certificate Authority** and/or **Tenant**. Click a counter to show only
+  those certificates in the table, and click it again to show all of them.
+
+The same expiry states are available as the `expiry_state` filter on the Certificates list and in the REST API
+(`/api/plugins/pki/certificates/?expiry_state=expiring-30`).
 
 ### REST API
 
@@ -150,22 +166,25 @@ python manage.py test netbox_pki
 
 ### CI/CD
 
-[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) runs on every push, as six staged jobs:
+[`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) runs on every push, as seven staged jobs:
 
 1. **Pre-Clean** — tears down this repo's own previously running stack *and wipes its named volumes*
    ([`ci/scripts/pre-cleanup.sh`](ci/scripts/pre-cleanup.sh)), so every deploy starts NetBox from a completely
-   empty database. Never touches the shared nginx proxy or a sibling plugin's own stack.
+   empty database. Never touches a sibling plugin's own stack.
 2. **Code-Review** — `ruff`, `shellcheck`, `yamllint`, JSON validation of the seed data, and a check that
    `pyproject.toml`'s version matches `versions.sh`.
 3. **Build** — builds the NetBox + plugin Docker image per `versions.sh`.
-4. **Test** — deploys the stack, then runs `manage.py check`, a migration drift check, the Django test suite, and a live HTTPS smoke test
-   (session login + a full API POST/GET/PATCH/DELETE round trip).
-5. **Test Deployment** — seeds the now-verified instance with demo data (contacts, contact groups, and one of
+4. **CVE Scan** — scans the built image with [Trivy](https://trivy.dev/) for HIGH/CRITICAL vulnerabilities.
+   Report-only: findings appear in the job log but don't block the deploy. Trivy's database cache (the
+   `trivy-cache` Docker volume) is removed after the scan.
+5. **Test** — deploys the stack, then runs `manage.py check`, a migration drift check, the Django test suite, and a live HTTP smoke test
+   against the published port (session login + a full API POST/GET/PATCH/DELETE round trip).
+6. **Test Deployment** — seeds the now-verified instance with demo data (tenants, contacts, contact groups, and one of
    every netbox_pki object type — Protocols, Requestors, Certificate Authorities including a parent/child pair,
    and Certificates) via the REST API ([`ci/scripts/test-deployment.py`](ci/scripts/test-deployment.py) +
    [`test-deployment.json`](ci/scripts/test-deployment.json)), so the showcase instance has real, linked objects to
    look at.
-6. **Deploy** — tags the repo `v<NETBOX_PKI_PLUGIN_VERSION>` (from `versions.sh`), if that tag doesn't already
+7. **Deploy** — tags the repo `v<NETBOX_PKI_PLUGIN_VERSION>` (from `versions.sh`), if that tag doesn't already
    exist.
 
 The instance left running after a successful **Test** stage doubles as a live showcase — but since every deploy
@@ -173,12 +192,6 @@ wipes the database, it starts empty each time and never carries data over from a
 the plugin's own migration ([`netbox_pki/migrations/0001_initial.py`](netbox_pki/migrations/0001_initial.py)) is
 hand-edited in place for schema changes rather than accumulating incremental migration files: there's never an
 already-migrated instance whose existing data a later migration would need to preserve.
-
-#### Reverse proxy and TLS
-
-This repo doesn't run nginx or manage TLS certificates. Both, including certificate renewal, are handled by a
-separate nginx project, which routes to this repo's `netbox` container over the shared `netbox-edge` Docker network
-(alias `netbox-certificate-plugin`, port 8080). That network must already exist on the runner before a deploy.
 
 ## License
 
