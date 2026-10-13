@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git rm *)",
+      "Bash(python3 -c \"import yaml,sys;[yaml.safe_load\\(open\\(f\\)\\) for f in ['.github/workflows/ci-cd.yml','ci/docker/docker-compose.yml']];print\\('yaml ok'\\)\")",
+      "Bash(python3 -c \"import yaml;[yaml.safe_load\\(open\\(f\\)\\) for f in ['.github/workflows/ci-cd.yml','ci/docker/docker-compose.yml']];print\\('yaml ok'\\)\")"
+    ]
+  }
+}

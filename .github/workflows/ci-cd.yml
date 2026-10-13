@@ -95,7 +95,7 @@ jobs:
           # which yamllint's default ruleset otherwise flags on every
           # single workflow file — noise, not a real problem.
           yamllint -d "{extends: default, rules: {line-length: {max: 140}, document-start: disable, truthy: disable}}" \
-            ci/docker/docker-compose.yml ci/shared-proxy/docker-compose.yml .github/workflows/
+            ci/docker/docker-compose.yml .github/workflows/
 
       - name: shellcheck
         run: |
@@ -168,8 +168,8 @@ jobs:
 
   #
   # 4. Test — brings the freshly-built image up for real (against the
-  # empty database Pre-Clean just left behind), wires it into the shared
-  # front door, and runs every check against it, fast-failing checks first
+  # empty database Pre-Clean just left behind) and runs every check
+  # against it, fast-failing checks first
   # (DB-independent system check) before the slower ones (Django test
   # suite, live HTTPS smoke test). Deliberately left running on success: it
   # doubles as the showcase/manual-test instance — starting empty each
@@ -205,31 +205,9 @@ jobs:
           EOF
           chmod 600 ci/docker/.env
 
-      - name: Issue or reuse TLS certificate
-        # Writes into the shared front door's cert directory — see
-        # ci/shared-proxy/README.md. DNS-01, so this doesn't depend on the
-        # front door already routing to this deploy.
-        run: ci/scripts/issue-cert.sh
-        env:
-          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
-          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
-          WS_ApiKey: ${{ secrets.WS_API_KEY }}
-          WS_ApiSecret: ${{ secrets.WS_API_SECRET }}
-
       - name: Deploy stack
         # No --build: Build already produced the image; this just starts it.
         run: docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml up -d --remove-orphans
-
-      - name: Render and reload shared front-door routing
-        # Runs after the stack is up: the `netbox` container's network
-        # alias needs to exist for the front door to route to it (the
-        # nginx template resolves it at request time via a Docker DNS
-        # resolver, so this ordering isn't strictly required for `nginx -t`
-        # to pass — see that template's own comment — but routing traffic
-        # to a container that doesn't exist yet has no point either way).
-        run: ci/scripts/render-proxy-conf.sh
-        env:
-          NETBOX_DOMAIN: ${{ vars.NETBOX_DOMAIN }}
 
       - name: Wait for NetBox to become healthy
         run: |
@@ -318,9 +296,6 @@ jobs:
           echo "::group::All services (combined, for anything else)"
           docker compose --env-file ci/docker/.env -f ci/docker/docker-compose.yml logs --tail=300
           echo "::endgroup::"
-          echo "::group::Shared front-door proxy logs"
-          docker logs netbox-edge-proxy --tail=200 2>&1 || echo "front door not found"
-          echo "::endgroup::"
 
       - name: Remove runtime environment file
         if: always()
@@ -387,7 +362,7 @@ jobs:
   # and >24h-build-cache pruning Pre-Clean already does at the *start* of
   # the *next* run, just also done at the *end* of *this* one, so disk usage
   # on the runner doesn't grow unboundedly between infrequent pushes. Does
-  # NOT touch the running stack or the shared front door — `docker image
+  # NOT touch the running stack — `docker image
   # prune` only removes dangling (untagged, unreferenced) images, never one
   # a running container is actually using, so the live showcase instance
   # (deliberately left running — see the Test stage's own comment) is

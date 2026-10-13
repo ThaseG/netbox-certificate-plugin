@@ -136,13 +136,13 @@ services:
       - netbox-scripts-files:/opt/netbox/netbox/scripts:rw
     networks:
       netbox:
-      # Joins the shared, persistent front-door reverse proxy's network
-      # under a stable alias so it can be reached as
+      # Joins the shared nginx reverse proxy's network (managed by the
+      # separate nginx project, which also owns TLS certificates) under a
+      # stable alias so it can be reached as
       # http://netbox-certificate-plugin:8080 regardless of which compose
       # project (this repo, or a sibling plugin repo sharing the same
       # runner) created this container. The "edge" network itself is NOT
-      # created or torn down by this repo's pipeline — see
-      # ci/shared-proxy/README.md for the one-time setup. `external: true`
+      # created or torn down by this repo's pipeline. `external: true`
       # below means `docker compose up` will fail loudly if that setup
       # hasn't been done yet, rather than silently creating a private
       # same-named network no other stack can actually see.
@@ -157,7 +157,7 @@ services:
         condition: service_healthy
     networks:
       # No "edge" here: only the web process needs to be reachable by the
-      # shared front door; the worker doesn't serve HTTP.
+      # shared nginx proxy; the worker doesn't serve HTTP.
       - netbox
     command:
       - /opt/netbox/venv/bin/python

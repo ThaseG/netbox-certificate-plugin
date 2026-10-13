@@ -4,7 +4,7 @@
 # (`manage.py test netbox_pki`, run earlier in the Test stage), which only
 # exercises the app in-process and can't see problems in the real
 # nginx -> TLS -> WSGI path (misconfigured proxying, a cert that didn't
-# actually get installed, the shared front door not routing to this
+# actually get installed, the shared nginx proxy not routing to this
 # plugin's container, etc). This script is what would actually notice
 # those.
 #

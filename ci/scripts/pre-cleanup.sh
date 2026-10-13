@@ -10,8 +10,8 @@
 #
 # Scoped to THIS repo's own compose project only. `docker compose down`
 # never removes networks marked `external: true` (the shared `netbox-edge`
-# network) regardless of --volumes, so the shared front-door proxy and any
-# sibling plugin's stack are untouched — see ci/shared-proxy/README.md.
+# network) regardless of --volumes, so the shared nginx proxy and any
+# sibling plugin's stack are untouched.
 set -euo pipefail
 
 # .. here is ci/ (this script lives in ci/scripts/), not the repo root
