@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "netbox-certificate-plugin"
 # Kept in sync with NETBOX_PKI_PLUGIN_VERSION in versions.sh — the
 # Code-Review stage of ci-cd.yml fails the build if these two drift apart.
-version = "0.2.0"
+version = "1.0.0"
 description = "Manage Certificate Authorities, Certificates, Requestors and enrollment Protocols directly in NetBox."
 readme = "README.md"
 requires-python = ">=3.10"

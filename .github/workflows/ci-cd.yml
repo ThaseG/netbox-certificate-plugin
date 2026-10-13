@@ -112,7 +112,7 @@ jobs:
           /tmp/shellcheck-v0.10.0/shellcheck ci/scripts/*.sh
 
       - name: Check pyproject.toml / versions.sh version drift
-        # Would have caught pyproject.toml drifting to 0.2.0 while
+        # Would have caught pyproject.toml drifting to 1.0.0 while
         # versions.sh moved on to next version — exactly the kind of silent
         # mismatch that's easy to introduce and easy to miss by eye.
         run: |

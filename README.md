@@ -8,12 +8,20 @@ The plugin's Django app label is `netbox_pki`.
 
 ## Screenshots
 
-> _TODO: add screenshots here._
+### Certificates
+![Certificates](docs/images/certificates.png)
 
+### Certificate Authorities
+![Certificate Authorities](docs/images/cert-authorities.png)
 
-| Certificate list | Certificate Authority detail | PKI navigation menu |
-| --- | --- | --- |
-| _placeholder_ | _placeholder_ | _placeholder_ |
+### Protocols
+![Protocols](docs/images/protocols.png)
+
+### Requestors
+![Certificate Requestors](docs/images/requestors.png)
+
+### Reports
+![Certificate Reports](docs/images/report.png)
 
 ## Data model
 
@@ -44,8 +52,7 @@ Validation rules enforced identically by the web UI and the REST API (see each m
 
 | Plugin Version | NetBox Version | Python Version |
 | --- | --- | --- |
-| 0.1.* | 4.6.x | \>= 3.10 |
-| 0.2.* | 4.6.x | \>= 3.10 |
+| 1.0.0 | 4.6.x | \>= 3.10 |
 
 The pinned combination actually built and deployed by this repo's CI/CD pipeline is tracked in
 [`versions.sh`](versions.sh) (currently NetBox `v4.6.8`).
