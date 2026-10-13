@@ -88,6 +88,16 @@ class CertificateExpiryTestCase(TestCase):
         self.assertEqual(Certificate.objects.get(cn='expired.example.com').days_remaining, -1)
         self.assertIsNone(Certificate.objects.get(cn='no-date.example.com').days_remaining)
 
+    def test_certificate_list_renders_every_state(self):
+        # Exercises CertificateTable.render_days_remaining for each branch (revoked, no date,
+        # expired, <=10, <=30, later) through the real list view.
+        user = User.objects.create_superuser(username='list-admin', password='x')
+        self.client.force_login(user)
+        response = self.client.get(reverse('plugins:netbox_pki:certificate_list'), {'per_page': 100})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Revoked')
+        self.assertContains(response, 'Expired 1d ago')
+
     def test_report_view_renders(self):
         user = User.objects.create_superuser(username='report-admin', password='x')
         self.client.force_login(user)

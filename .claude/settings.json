@@ -26,7 +26,11 @@
       "WebFetch(domain:hub.docker.com)",
       "Bash(grep -n \"^  [a-z-]*:$\\\\|needs:\\\\|^  # [0-9]\\\\.\\\\|Remove runtime environment\" .github/workflows/ci-cd.yml)",
       "Bash(python3 /private/tmp/claude-501/-Users-andrej-hyben-Documents-Git-nosync-netbox-certificate-plugin/01318f12-93a5-4642-8dc7-f9b4670b5f48/scratchpad/gen_certs.py ci/scripts/test-deployment.json)",
-      "Bash(sed -n '/\"plugins\\\\/pki\\\\/certificates\\\\/\"/,+16p' ci/scripts/test-deployment.json)"
+      "Bash(sed -n '/\"plugins\\\\/pki\\\\/certificates\\\\/\"/,+16p' ci/scripts/test-deployment.json)",
+      "Bash(gh variable *)",
+      "Bash(gh run *)",
+      "Bash(grep -n \"ALLOWED_HOSTS\\\\|CSRF_TRUSTED\\\\|NETBOX_HOST_PORT\\\\|ports:\" -A1 ci/docker/docker-compose.yml | head -20; grep -n \"NETBOX_DOMAIN\\\\|RUNNER_HOST_IP\\\\|NETBOX_HOST_PORT\" .github/workflows/ci-cd.yml | head; grep -n \"ALLOWED_HOSTS\\\\|CSRF\" ../netbox-service-offerings-plugin/ci/docker/docker-compose.yml)",
+      "Read(//Users/andrej.hyben/Documents/Git.nosync/netbox-service-offerings-plugin/ci/docker/**)"
     ]
   }
 }

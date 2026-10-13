@@ -93,11 +93,13 @@ services:
       API_TOKEN_PEPPER_1: ${API_TOKEN_PEPPER_1:?API_TOKEN_PEPPER_1 must be set}
       # Space-separated (netbox-docker splits these on spaces).
       # NETBOX_DOMAIN: public hostname served by the external reverse proxy.
-      # RUNNER_HOST_IP: the runner's own IP, for direct access on the
-      # published port (detected by the pipeline).
+      # RUNNER_HOST_IPS: every IP of the runner (`hostname -I`, detected by
+      # the pipeline), for direct access on the published port — and for a
+      # proxy that forwards to <ip>:<port> without passing the original Host.
+      # NETBOX_EXTRA_ALLOWED_HOSTS: any other names, space-separated.
       # localhost: required by the healthcheck below and by the CI smoke
       # test / demo-data seeding, which call http://localhost:<port>.
-      ALLOWED_HOSTS: ${NETBOX_DOMAIN:-} ${RUNNER_HOST_IP:-} localhost
+      ALLOWED_HOSTS: ${NETBOX_DOMAIN:-} ${RUNNER_HOST_IPS:-} ${NETBOX_EXTRA_ALLOWED_HOSTS:-} localhost
       CSRF_TRUSTED_ORIGINS: https://${NETBOX_DOMAIN:-localhost}
       DB_HOST: postgres
       DB_NAME: netbox

@@ -121,7 +121,7 @@ class CertificateTable(NetBoxTable):
     def render_days_remaining(self, record):
         days = record.days_remaining
         if record.status == CertificateStatusChoices.STATUS_REVOKED:
-            return format_html('<span class="badge text-bg-secondary">Revoked</span>')
+            return format_html('<span class="badge text-bg-{}">{}</span>', 'secondary', 'Revoked')
         if days is None:
             return '—'
         if days < 0:

@@ -7,7 +7,7 @@ class NetBoxPKIConfig(PluginConfig):
     description = (
         'Manage Certificate Authorities, Certificates, Requestors and enrollment Protocols directly in NetBox.'
     )
-    version = '0.1.0'
+    version = '0.2.0'
     author = 'ThaseG'
     author_email = ''
     base_url = 'pki'
